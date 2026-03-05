@@ -134,6 +134,8 @@ const app = {
     } else if (page === 'home') {
       this.updateStats();
       this.renderRecentWords();
+    } else if (page === 'settings') {
+      // 设置页面不需要刷新数据
     }
   },
 
@@ -154,30 +156,37 @@ const app = {
 
   // Recent Words
   async renderRecentWords() {
-    const recentWords = await db.words.orderBy('createdAt').reverse().limit(5).toArray();
-    const container = document.getElementById('recent-words');
+    // 获取高频错词（错误次数>=1），按错误次数降序排列，最多显示5个
+    const errorWords = await db.words
+      .filter(w => w.errorCount >= 1)
+      .toArray();
     
-    if (recentWords.length === 0) {
+    // 按错误次数降序排序，取前5个
+    const topErrorWords = errorWords
+      .sort((a, b) => b.errorCount - a.errorCount)
+      .slice(0, 5);
+    
+    const container = document.getElementById('home-error-words');
+    
+    if (topErrorWords.length === 0) {
       container.innerHTML = `
         <div class="empty-state">
-          <div class="empty-icon">📝</div>
-          <div class="empty-title">暂无单词</div>
-          <div class="empty-subtitle">点击上方按钮开始录入</div>
+          <div class="empty-icon">🎉</div>
+          <div class="empty-title">暂无错词</div>
+          <div class="empty-subtitle">继续保持，加油！</div>
         </div>
       `;
       return;
     }
     
-    container.innerHTML = recentWords.map(word => `
+    container.innerHTML = topErrorWords.map(word => `
       <div class="word-item" onclick="app.viewWordDetail('${word.id}')">
         <div class="word-info">
           <div class="word-text">${word.word}</div>
           <div class="word-translation">${word.translation}</div>
         </div>
         <div class="word-meta">
-          <span class="error-badge ${word.errorCount === 0 ? 'zero' : ''}">
-            ${word.errorCount === 0 ? '✓' : word.errorCount + ' 次错误'}
-          </span>
+          <span class="error-badge">${word.errorCount} 次错误</span>
         </div>
       </div>
     `).join('');
@@ -1116,34 +1125,19 @@ const app = {
     document.getElementById('practice-area').style.display = 'none';
     state.practiceWords = [];
     state.currentPracticeIndex = 0;
+    state.wrongWordsInRound = [];
+  },
+
+  exitPractice() {
+    // 确认是否退出
+    if (confirm('确定要退出练习吗？当前进度将不会保存。')) {
+      this.endPractice();
+      this.showToast('已退出练习', 'info');
+    }
   },
 
   // Stats
   async renderStats() {
-    // Get top error words
-    const topErrors = await db.words.orderBy('errorCount').reverse().limit(5).toArray();
-    const container = document.getElementById('top-error-words');
-    
-    if (topErrors.length === 0 || topErrors[0].errorCount === 0) {
-      container.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-subtitle">暂无错词数据</div>
-        </div>
-      `;
-    } else {
-      container.innerHTML = topErrors.map(word => `
-        <div class="word-item">
-          <div class="word-info">
-            <div class="word-text">${word.word}</div>
-            <div class="word-translation">${word.translation}</div>
-          </div>
-          <div class="word-meta">
-            <span class="error-badge">${word.errorCount} 次错误</span>
-          </div>
-        </div>
-      `).join('');
-    }
-    
     // Render chart
     this.renderErrorChart();
   },

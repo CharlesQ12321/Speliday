@@ -1099,11 +1099,6 @@
           <div class="logo-icon">📝</div>
           <div class="logo-text">每日拼单词</div>
         </div>
-        <div class="header-actions">
-          <button class="icon-btn" onclick="app.openSettings()" title="设置">
-            <i class="fa fa-cog"></i>
-          </button>
-        </div>
       </header>
 
       <!-- Home Page -->
@@ -1136,16 +1131,16 @@
         </div>
         <input type="file" id="home-image-input" accept="image/*" class="hidden" onchange="app.handleHomeImageSelect(this)">
 
-        <!-- Recent Words -->
+        <!-- 高频错词 -->
         <div class="section-title">
-          <i class="fa fa-clock-o"></i>
-          <span>最近录入</span>
+          <i class="fa fa-exclamation-triangle"></i>
+          <span>高频错词</span>
         </div>
-        <div id="recent-words" class="word-list">
+        <div id="home-error-words" class="word-list">
           <div class="empty-state">
-            <div class="empty-icon">📝</div>
-            <div class="empty-title">暂无单词</div>
-            <div class="empty-subtitle">点击上方按钮开始录入</div>
+            <div class="empty-icon">🎉</div>
+            <div class="empty-title">暂无错词</div>
+            <div class="empty-subtitle">继续保持，加油！</div>
           </div>
         </div>
       </div>
@@ -1235,9 +1230,13 @@
                    autocapitalize="off"
                    spellcheck="false">
 
-            <div style="margin-top: 16px;">
-              <button class="btn btn-primary btn-block" id="practice-check-btn" onclick="app.checkAnswer()">
+            <!-- 按钮区域：退出和检查按钮并排 -->
+            <div style="margin-top: 16px; display: flex; gap: 12px; width: 100%; max-width: 300px;">
+              <button class="btn btn-primary" id="practice-check-btn" onclick="app.checkAnswer()" style="flex: 1;">
                 检查
+              </button>
+              <button class="btn btn-primary" onclick="app.exitPractice()" style="flex: 1;">
+                <i class="fa fa-arrow-left"></i> 退出
               </button>
             </div>
 
@@ -1260,25 +1259,59 @@
           </div>
         </div>
 
-        <div class="card">
-          <div class="card-title">顽固单词 Top 5</div>
-          <div id="top-error-words" class="word-list">
-            <div class="empty-state">
-              <div class="empty-subtitle">暂无数据</div>
+      </div>
+
+      <!-- Settings Page -->
+      <div id="page-settings" class="page">
+        <div class="section-title">
+          <i class="fa fa-cog"></i>
+          <span>设置</span>
+        </div>
+        
+        <!-- 设置选项 -->
+        <div class="space-y-4">
+          <!-- 数据管理 -->
+          <div>
+            <h2 class="card-title" style="text-transform: none; font-size: 14px; margin-bottom: 10px;">数据管理</h2>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <button class="btn btn-secondary" onclick="app.exportData()" style="justify-content: space-between;">
+                <span>导出数据</span>
+                <i class="fa fa-arrow-right"></i>
+              </button>
+              <button class="btn btn-secondary" onclick="app.importData()" style="justify-content: space-between;">
+                <span>导入数据</span>
+                <i class="fa fa-arrow-right"></i>
+              </button>
+              <button class="btn btn-danger" onclick="app.clearAllData()" style="justify-content: space-between;">
+                <span>清除数据</span>
+                <i class="fa fa-arrow-right"></i>
+              </button>
             </div>
           </div>
-        </div>
-
-        <div class="card">
-          <div class="card-title">数据管理</div>
-          <div style="display: flex; flex-direction: column; gap: 10px;">
-            <button class="btn btn-secondary" onclick="app.exportData()">
-              <i class="fa fa-download"></i> 导出数据
-            </button>
-            <button class="btn btn-secondary" onclick="app.importData()">
-              <i class="fa fa-upload"></i> 导入数据
-            </button>
-            <input type="file" id="import-file" accept=".json" onchange="app.handleImport(this)">
+          
+          <!-- 关于 -->
+          <div>
+            <h2 class="card-title" style="text-transform: none; font-size: 14px; margin-bottom: 10px;">关于</h2>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: var(--bg-tertiary); border-radius: var(--radius); border: 1px solid var(--border);">
+                <span style="font-size: 14px; color: var(--text-primary);">版本</span>
+                <span style="font-size: 14px; color: var(--text-secondary);">1.0.0</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: var(--bg-tertiary); border-radius: var(--radius); border: 1px solid var(--border);">
+                <span style="font-size: 14px; color: var(--text-primary);">开发者</span>
+                <span style="font-size: 14px; color: var(--text-secondary);">Speliday Team</span>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 数据存储提示 -->
+          <div style="padding: 12px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: var(--radius);">
+            <div style="display: flex; align-items: flex-start; gap: 8px;">
+              <i class="fa fa-info-circle" style="color: var(--warning); margin-top: 2px;"></i>
+              <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.5;">
+                提示：本应用的数据目前都存储在本地，清除浏览器数据会导致应用中的数据丢失。建议通过导入导出功能进行数据备份。
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -1301,6 +1334,10 @@
       <button class="nav-item" onclick="app.navigate('stats')">
         <i class="fa fa-bar-chart"></i>
         <span class="nav-label">统计</span>
+      </button>
+      <button class="nav-item" onclick="app.navigate('settings')">
+        <i class="fa fa-cog"></i>
+        <span class="nav-label">设置</span>
       </button>
     </nav>
 
