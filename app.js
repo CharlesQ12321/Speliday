@@ -1194,9 +1194,27 @@ const app = {
 
   // Data Export/Import
   async exportData() {
+    // 获取单词数据并排除 createdAt 和 lastPracticed 属性
+    const words = await db.words.toArray();
+    const sanitizedWords = words.map(word => ({
+      id: word.id,
+      word: word.word,
+      translation: word.translation,
+      bookId: word.bookId,
+      errorCount: word.errorCount
+    }));
+    
+    // 获取单词本数据并排除 createdAt 属性
+    const books = await db.books.toArray();
+    const sanitizedBooks = books.map(book => ({
+      id: book.id,
+      bookId: book.bookId,
+      bookName: book.bookName
+    }));
+    
     const data = {
-      words: await db.words.toArray(),
-      books: await db.books.toArray(),
+      words: sanitizedWords,
+      books: sanitizedBooks,
       exportDate: new Date().toISOString(),
       version: '1.0'
     };
@@ -1205,7 +1223,7 @@ const app = {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `snapwords_backup_${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `speliday_backup_${new Date().toISOString().split('T')[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
     
