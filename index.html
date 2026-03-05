@@ -1,0 +1,1550 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#3B82F6">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>每日拼单词 - Speliday</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📝</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #3B82F6;
+      --primary-dark: #2563EB;
+      --primary-light: #60A5FA;
+      --accent: #10B981;
+      --accent-light: #34D399;
+      --success: #10B981;
+      --error: #EF4444;
+      --warning: #F59E0B;
+      --bg-primary: #F3F4F6;
+      --bg-secondary: #FFFFFF;
+      --bg-tertiary: #F9FAFB;
+      --text-primary: #1F2937;
+      --text-secondary: #6B7280;
+      --text-muted: #9CA3AF;
+      --border: #E5E7EB;
+      --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      --radius: 8px;
+      --radius-sm: 6px;
+      --radius-lg: 12px;
+      --transition: all 0.2s ease;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: 'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    #app {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      max-width: 640px;
+      margin: 0 auto;
+      background: var(--bg-primary);
+    }
+
+    /* Main Content */
+    .main-content {
+      flex: 1;
+      position: relative;
+      padding: 16px;
+      padding-bottom: 100px;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-top: env(safe-area-inset-top, 0);
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo-icon {
+      width: 40px;
+      height: 40px;
+      background: var(--primary);
+      border-radius: var(--radius);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      color: white;
+    }
+
+    .logo-text {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .icon-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: var(--radius);
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: var(--transition);
+      font-size: 16px;
+    }
+
+    .icon-btn:hover, .icon-btn:active {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      border-color: var(--primary);
+    }
+
+    /* Page Sections */
+    .page {
+      display: none;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .page.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Cards */
+    .card {
+      background: var(--bg-secondary);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+      margin-bottom: 12px;
+      border: 1px solid var(--border);
+      transition: var(--transition);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .card:hover {
+      border-color: var(--primary);
+      box-shadow: var(--shadow);
+    }
+
+    .card-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    .card-value {
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--text-primary);
+      line-height: 1;
+    }
+
+    .card-subtitle {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 6px;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .stat-card {
+      background: var(--bg-secondary);
+      border-radius: var(--radius);
+      padding: 16px;
+      border: 1px solid var(--border);
+      position: relative;
+      overflow: hidden;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: var(--primary);
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+    }
+
+    .stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    /* Primary Action Button */
+    .primary-action {
+      background: var(--primary);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: var(--transition);
+      margin-bottom: 20px;
+      position: relative;
+      overflow: hidden;
+      color: white;
+      border: none;
+    }
+
+    .primary-action:hover {
+      background: var(--primary-dark);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow);
+    }
+
+    .primary-action:active {
+      transform: scale(0.98);
+    }
+
+    .primary-action-icon {
+      font-size: 40px;
+      margin-bottom: 8px;
+    }
+
+    .primary-action-text {
+      font-size: 18px;
+      font-weight: 600;
+      color: white;
+    }
+
+    .primary-action-subtext {
+      font-size: 13px;
+      color: rgba(255,255,255,0.8);
+      margin-top: 4px;
+    }
+
+    /* Section Title */
+    .section-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Word List */
+    .word-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .word-item {
+      background: var(--bg-secondary);
+      border-radius: var(--radius);
+      padding: 14px;
+      border: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: var(--transition);
+      cursor: pointer;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .word-item:hover {
+      border-color: var(--primary);
+      background: var(--bg-tertiary);
+      transform: translateY(-1px);
+    }
+
+    .word-info {
+      flex: 1;
+    }
+
+    .word-text {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 2px;
+    }
+
+    .word-translation {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .word-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .error-badge {
+      background: rgba(239, 68, 68, 0.1);
+      color: var(--error);
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .error-badge.zero {
+      background: rgba(16, 185, 129, 0.1);
+      color: var(--success);
+    }
+
+    /* Bottom Navigation */
+    .bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100%;
+      max-width: 640px;
+      background: var(--bg-secondary);
+      border-top: 1px solid var(--border);
+      padding: 8px 20px calc(8px + env(safe-area-inset-bottom, 0));
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      z-index: 100;
+      box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+    }
+
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      padding: 8px 16px;
+      cursor: pointer;
+      transition: var(--transition);
+      color: var(--text-muted);
+      border-radius: var(--radius);
+      border: none;
+      background: transparent;
+    }
+
+    .nav-item:hover {
+      color: var(--text-secondary);
+      background: var(--bg-tertiary);
+    }
+
+    .nav-item.active {
+      color: var(--primary);
+      background: rgba(59, 130, 246, 0.1);
+    }
+
+    .nav-icon {
+      font-size: 20px;
+    }
+
+    .nav-label {
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 12px 20px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: var(--transition);
+      border: none;
+      outline: none;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-dark);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow);
+    }
+
+    .btn-secondary {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      background: var(--bg-secondary);
+      border-color: var(--primary);
+    }
+
+    .btn-danger {
+      background: rgba(239, 68, 68, 0.1);
+      color: var(--error);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+    }
+
+    .btn-danger:hover {
+      background: rgba(239, 68, 68, 0.2);
+    }
+
+    .btn-success {
+      background: var(--success);
+      color: white;
+    }
+
+    .btn-success:hover {
+      opacity: 0.9;
+    }
+
+    .btn-block {
+      width: 100%;
+    }
+
+    /* Input Styles */
+    .input-group {
+      margin-bottom: 14px;
+    }
+
+    .input-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+    }
+
+    .input, .textarea, .select {
+      width: 100%;
+      padding: 12px 14px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-primary);
+      font-size: 14px;
+      font-family: inherit;
+      transition: var(--transition);
+      outline: none;
+    }
+
+    .input:focus, .textarea:focus, .select:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    .textarea {
+      min-height: 100px;
+      resize: vertical;
+    }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      opacity: 0;
+      visibility: hidden;
+      transition: var(--transition);
+      padding: 20px;
+    }
+
+    .modal-overlay.active {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .modal {
+      background: var(--bg-secondary);
+      border-radius: var(--radius-lg);
+      width: 100%;
+      max-width: 480px;
+      max-height: 90vh;
+      overflow: hidden;
+      transform: scale(0.9) translateY(20px);
+      transition: var(--transition);
+      border: 1px solid var(--border);
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    }
+
+    .modal-overlay.active .modal {
+      transform: scale(1) translateY(0);
+    }
+
+    .modal-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .modal-close {
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-tertiary);
+      border: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: var(--transition);
+    }
+
+    .modal-close:hover {
+      background: var(--border);
+      color: var(--text-primary);
+    }
+
+    .modal-body {
+      padding: 16px 20px;
+      overflow-y: auto;
+      max-height: calc(90vh - 120px);
+    }
+
+    .modal-footer {
+      padding: 14px 20px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+
+    /* Empty State */
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-muted);
+    }
+
+    .empty-icon {
+      font-size: 48px;
+      margin-bottom: 12px;
+      opacity: 0.5;
+    }
+
+    .empty-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+    }
+
+    .empty-subtitle {
+      font-size: 13px;
+    }
+
+    /* Loading Spinner */
+    .spinner {
+      width: 36px;
+      height: 36px;
+      border: 3px solid var(--border);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .loading-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(255, 255, 255, 0.9);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+      gap: 14px;
+    }
+
+    .loading-text {
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 100px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      padding: 12px 20px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-weight: 500;
+      z-index: 3000;
+      opacity: 0;
+      transition: var(--transition);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .toast.success {
+      border-color: var(--success);
+      background: rgba(16, 185, 129, 0.1);
+      color: var(--success);
+    }
+
+    .toast.error {
+      border-color: var(--error);
+      background: rgba(239, 68, 68, 0.1);
+      color: var(--error);
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .tab {
+      padding: 8px 16px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-secondary);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: var(--transition);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .tab:hover {
+      border-color: var(--primary);
+      color: var(--text-primary);
+    }
+
+    .tab.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: white;
+    }
+
+    /* Search */
+    .search-box {
+      position: relative;
+      margin-bottom: 14px;
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 12px 14px 12px 42px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-primary);
+      font-size: 14px;
+      outline: none;
+      transition: var(--transition);
+    }
+
+    .search-input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 16px;
+      color: var(--text-muted);
+    }
+
+    /* Practice Mode */
+    .practice-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 50vh;
+      text-align: center;
+      padding: 20px;
+    }
+
+    .practice-progress {
+      width: 100%;
+      max-width: 280px;
+      margin-bottom: 32px;
+    }
+
+    .progress-bar {
+      height: 6px;
+      background: var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: var(--primary);
+      border-radius: 3px;
+      transition: width 0.3s ease;
+    }
+
+    .progress-text {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-top: 8px;
+    }
+
+    .practice-translation {
+      font-size: 24px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 32px;
+      line-height: 1.4;
+      padding: 0 20px;
+    }
+
+    .practice-input {
+      width: 100%;
+      max-width: 300px;
+      padding: 16px 20px;
+      font-size: 18px;
+      text-align: center;
+      letter-spacing: 1px;
+      text-transform: lowercase;
+    }
+
+    .practice-feedback {
+      margin-top: 20px;
+      padding: 14px 20px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-weight: 500;
+      opacity: 0;
+      transform: translateY(-10px);
+      transition: var(--transition);
+    }
+
+    .practice-feedback.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .practice-feedback.correct {
+      background: rgba(16, 185, 129, 0.1);
+      color: var(--success);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+
+    .practice-feedback.incorrect {
+      background: rgba(239, 68, 68, 0.1);
+      color: var(--error);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+    }
+
+    .practice-feedback .correct-word {
+      font-size: 18px;
+      font-weight: 700;
+      margin-top: 6px;
+    }
+
+    .practice-feedback .highlight-error {
+      color: var(--error);
+      text-decoration: line-through;
+    }
+
+    /* Image Preview */
+    .image-preview {
+      width: 100%;
+      max-height: 280px;
+      object-fit: contain;
+      border-radius: var(--radius);
+      background: var(--bg-tertiary);
+      margin-bottom: 14px;
+    }
+
+    /* Editable Table */
+    .editable-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .editable-table th,
+    .editable-table td {
+      padding: 10px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .editable-table th {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .editable-table input {
+      width: 100%;
+      padding: 8px 10px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-size: 13px;
+      outline: none;
+    }
+
+    .editable-table input:focus {
+      border-color: var(--primary);
+    }
+
+    .table-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    .table-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: var(--radius-sm);
+      border: none;
+      background: var(--bg-tertiary);
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: var(--transition);
+    }
+
+    .table-btn:hover {
+      background: var(--error);
+      color: white;
+    }
+
+    /* File Upload */
+    .file-upload {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius-lg);
+      padding: 32px;
+      text-align: center;
+      cursor: pointer;
+      transition: var(--transition);
+      background: var(--bg-tertiary);
+    }
+
+    .file-upload:hover {
+      border-color: var(--primary);
+      background: rgba(59, 130, 246, 0.05);
+    }
+
+    .file-upload-icon {
+      font-size: 40px;
+      margin-bottom: 10px;
+    }
+
+    .file-upload-text {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+
+    .file-upload-hint {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* Settings */
+    .setting-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .setting-item:last-child {
+      border-bottom: none;
+    }
+
+    .setting-info {
+      flex: 1;
+    }
+
+    .setting-label {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-primary);
+      margin-bottom: 2px;
+    }
+
+    .setting-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* Toggle Switch */
+    .toggle {
+      width: 48px;
+      height: 26px;
+      background: var(--border);
+      border-radius: 13px;
+      position: relative;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .toggle.active {
+      background: var(--primary);
+    }
+
+    .toggle::after {
+      content: '';
+      position: absolute;
+      width: 22px;
+      height: 22px;
+      background: white;
+      border-radius: 50%;
+      top: 2px;
+      left: 2px;
+      transition: var(--transition);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+
+    .toggle.active::after {
+      left: 24px;
+    }
+
+    /* Responsive */
+    @media (max-width: 380px) {
+      .main-content {
+        padding: 12px;
+      }
+      
+      .stats-grid {
+        grid-template-columns: 1fr;
+      }
+      
+      .nav-item {
+        padding: 6px 12px;
+      }
+      
+      .nav-label {
+        font-size: 10px;
+      }
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--bg-primary);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 3px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--text-muted);
+    }
+
+    /* Animation Classes */
+    .pulse {
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+
+    .shake {
+      animation: shake 0.5s;
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-10px); }
+      75% { transform: translateX(10px); }
+    }
+
+    .bounce {
+      animation: bounce 0.5s;
+    }
+
+    @keyframes bounce {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+
+    /* Hidden file input */
+    input[type="file"] {
+      display: none;
+    }
+
+    /* Chart container */
+    .chart-container {
+      position: relative;
+      height: 220px;
+      margin: 16px 0;
+    }
+
+    /* Font Awesome icons in nav */
+    .nav-item .fa {
+      font-size: 20px;
+      margin-bottom: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Header -->
+      <header class="header">
+        <div class="logo">
+          <div class="logo-icon">📝</div>
+          <div class="logo-text">每日拼单词</div>
+        </div>
+        <div class="header-actions">
+          <button class="icon-btn" onclick="app.openSettings()" title="设置">
+            <i class="fa fa-cog"></i>
+          </button>
+        </div>
+      </header>
+
+      <!-- Home Page -->
+      <div id="page-home" class="page active">
+        <!-- Stats -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">总单词数</div>
+            <div class="stat-value" id="stat-total-words">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">今日练习</div>
+            <div class="stat-value" id="stat-today-practice">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">高频错词</div>
+            <div class="stat-value" id="stat-error-words">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">单词本</div>
+            <div class="stat-value" id="stat-books">0</div>
+          </div>
+        </div>
+
+        <!-- Primary Action -->
+        <div class="primary-action" onclick="document.getElementById('home-image-input').click()">
+          <div class="primary-action-icon">📷</div>
+          <div class="primary-action-text">上传图片识别</div>
+          <div class="primary-action-subtext">选择本地图片，AI智能识别单词</div>
+        </div>
+        <input type="file" id="home-image-input" accept="image/*" class="hidden" onchange="app.handleHomeImageSelect(this)">
+
+        <!-- Recent Words -->
+        <div class="section-title">
+          <i class="fa fa-clock-o"></i>
+          <span>最近录入</span>
+        </div>
+        <div id="recent-words" class="word-list">
+          <div class="empty-state">
+            <div class="empty-icon">📝</div>
+            <div class="empty-title">暂无单词</div>
+            <div class="empty-subtitle">点击上方按钮开始录入</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Library Page -->
+      <div id="page-library" class="page">
+        <div class="section-title">
+          <i class="fa fa-book"></i>
+          <span>单词本</span>
+        </div>
+        
+        <!-- Book Tabs -->
+        <div class="tabs" id="book-tabs">
+          <div class="tab active" data-book="all">全部</div>
+        </div>
+
+        <!-- Search -->
+        <div class="search-box">
+          <i class="fa fa-search search-icon"></i>
+          <input type="text" class="search-input" id="word-search" placeholder="搜索单词..." oninput="app.searchWords(this.value)">
+        </div>
+
+        <!-- Word List -->
+        <div id="library-words" class="word-list">
+          <div class="empty-state">
+            <div class="empty-icon">📖</div>
+            <div class="empty-title">单词本为空</div>
+            <div class="empty-subtitle">去录入一些单词吧</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Practice Page -->
+      <div id="page-practice" class="page">
+        <div id="practice-setup">
+          <div class="section-title">
+            <i class="fa fa-pencil"></i>
+            <span>拼写练习</span>
+          </div>
+
+          <div class="card">
+            <div class="card-title">选择单词本</div>
+            <select class="select" id="practice-book-select">
+              <option value="all">全部单词</option>
+            </select>
+          </div>
+
+          <div class="card">
+            <div class="card-title">练习数量</div>
+            <input type="number" class="input" id="practice-count" value="10" min="1" max="50">
+          </div>
+
+          <div class="card">
+            <div class="card-title">练习模式</div>
+            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+              <button class="btn btn-primary" onclick="app.startPractice('random')">
+                <i class="fa fa-random"></i> 随机抽取
+              </button>
+              <button class="btn btn-secondary" onclick="app.startPractice('error')">
+                <i class="fa fa-refresh"></i> 错词复习
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div id="practice-area" style="display: none;">
+          <div class="practice-container">
+            <div class="practice-progress">
+              <div class="progress-bar">
+                <div class="progress-fill" id="practice-progress-fill" style="width: 0%"></div>
+              </div>
+              <div class="progress-text">
+                <span id="practice-current">1</span> / <span id="practice-total">10</span>
+              </div>
+            </div>
+
+            <div class="practice-translation" id="practice-translation">
+              点击开始练习
+            </div>
+
+            <input type="text" 
+                   class="input practice-input" 
+                   id="practice-input" 
+                   placeholder="输入英文单词"
+                   autocomplete="off"
+                   autocorrect="off"
+                   autocapitalize="off"
+                   spellcheck="false">
+
+            <div style="margin-top: 16px;">
+              <button class="btn btn-primary btn-block" id="practice-check-btn" onclick="app.checkAnswer()">
+                检查
+              </button>
+            </div>
+
+            <div class="practice-feedback" id="practice-feedback"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stats Page -->
+      <div id="page-stats" class="page">
+        <div class="section-title">
+          <i class="fa fa-bar-chart"></i>
+          <span>数据统计</span>
+        </div>
+
+        <div class="card">
+          <div class="card-title">错误分布</div>
+          <div class="chart-container">
+            <canvas id="error-chart"></canvas>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">顽固单词 Top 5</div>
+          <div id="top-error-words" class="word-list">
+            <div class="empty-state">
+              <div class="empty-subtitle">暂无数据</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">数据管理</div>
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <button class="btn btn-secondary" onclick="app.exportData()">
+              <i class="fa fa-download"></i> 导出数据
+            </button>
+            <button class="btn btn-secondary" onclick="app.importData()">
+              <i class="fa fa-upload"></i> 导入数据
+            </button>
+            <input type="file" id="import-file" accept=".json" onchange="app.handleImport(this)">
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Bottom Navigation -->
+    <nav class="bottom-nav">
+      <button class="nav-item active" onclick="app.navigate('home')">
+        <i class="fa fa-home"></i>
+        <span class="nav-label">首页</span>
+      </button>
+      <button class="nav-item" onclick="app.navigate('library')">
+        <i class="fa fa-book"></i>
+        <span class="nav-label">词库</span>
+      </button>
+      <button class="nav-item" onclick="app.navigate('practice')">
+        <i class="fa fa-pencil"></i>
+        <span class="nav-label">练习</span>
+      </button>
+      <button class="nav-item" onclick="app.navigate('stats')">
+        <i class="fa fa-bar-chart"></i>
+        <span class="nav-label">统计</span>
+      </button>
+    </nav>
+
+    <!-- Image Source Selection Modal -->
+    <div class="modal-overlay" id="image-source-modal">
+      <div class="modal" style="max-width: 360px;">
+        <div class="modal-header">
+          <div class="modal-title">选择图片来源</div>
+          <button class="modal-close" onclick="app.closeImageSourceModal()">×</button>
+        </div>
+        <div class="modal-body">
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <button class="btn btn-secondary" onclick="app.startCamera()" style="justify-content: flex-start; padding: 14px;">
+              <i class="fa fa-camera" style="font-size: 20px; margin-right: 12px;"></i>
+              <span>拍照</span>
+            </button>
+            <button class="btn btn-secondary" onclick="app.chooseFromGallery()" style="justify-content: flex-start; padding: 14px;">
+              <i class="fa fa-image" style="font-size: 20px; margin-right: 12px;"></i>
+              <span>从相册/文件选择</span>
+            </button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="app.closeImageSourceModal()">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Camera Modal -->
+    <div class="modal-overlay" id="live-camera-modal" style="background: #000;">
+      <div style="width: 100%; height: 100%; position: relative;">
+        <video id="live-camera-video" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover;"></video>
+        <canvas id="live-camera-canvas" style="display: none;"></canvas>
+        
+        <div style="position: absolute; bottom: 0; left: 0; right: 0; padding: 24px; background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);">
+          <div style="display: flex; justify-content: center; align-items: center; gap: 24px;">
+            <button class="icon-btn" onclick="app.stopCamera()" style="background: rgba(255,255,255,0.2); color: white; border: none; width: 48px; height: 48px;">
+              <i class="fa fa-times"></i>
+            </button>
+            <button onclick="app.capturePhoto()" style="width: 64px; height: 64px; border-radius: 50%; background: white; border: 4px solid rgba(255,255,255,0.5); display: flex; align-items: center; justify-content: center; cursor: pointer;">
+              <div style="width: 48px; height: 48px; border-radius: 50%; border: 3px solid #333;"></div>
+            </button>
+            <button class="icon-btn" onclick="app.switchCamera()" style="background: rgba(255,255,255,0.2); color: white; border: none; width: 48px; height: 48px;">
+              <i class="fa fa-refresh"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Camera Modal -->
+    <div class="modal-overlay" id="camera-modal">
+      <div class="modal" style="max-width: 600px;">
+        <div class="modal-header">
+          <div class="modal-title">拍照录入</div>
+          <button class="modal-close" onclick="app.closeCamera()">×</button>
+        </div>
+        <div class="modal-body">
+          <div id="camera-step-1">
+            <div class="file-upload" onclick="app.openImageSourceModal()">
+              <div class="file-upload-icon">📸</div>
+              <div class="file-upload-text">点击拍照或选择图片</div>
+              <div class="file-upload-hint">支持 JPG、PNG 格式，建议图片大小不超过 5MB</div>
+            </div>
+            <input type="file" id="camera-input" accept="image/*" class="hidden" onchange="app.handleImageSelect(this)">
+          </div>
+
+          <div id="camera-step-2" style="display: none;">
+            <!-- Image Preview with Crop Area -->
+            <div id="preview-container" style="position: relative; margin-bottom: 14px; background: var(--bg-tertiary); border-radius: var(--radius); overflow: hidden;">
+              <img id="preview-image" style="width: 100%; display: block;" alt="预览">
+              <!-- Crop Overlay -->
+              <div id="crop-overlay" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: none;">
+                <div id="crop-area" style="position: absolute; border: 2px dashed var(--primary); background: rgba(59, 130, 246, 0.1); cursor: move;"></div>
+              </div>
+            </div>
+            
+            <!-- Image Controls -->
+            <div style="display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap;">
+              <button class="btn btn-secondary" onclick="app.rotateImage(-90)">
+                <i class="fa fa-rotate-left"></i> 左转
+              </button>
+              <button class="btn btn-secondary" onclick="app.rotateImage(90)">
+                <i class="fa fa-rotate-right"></i> 右转
+              </button>
+              <button class="btn btn-primary" onclick="app.confirmAreaAndRecognize()" id="confirm-area-btn">
+                <i class="fa fa-check"></i> 确认区域
+              </button>
+            </div>
+            
+            <!-- 识别结果提示 -->
+            <div id="recognition-status" style="padding: 10px; background: var(--bg-tertiary); border-radius: var(--radius); margin-bottom: 14px; display: none;">
+              <div style="font-size: 13px; color: var(--text-secondary);">
+                已识别 <span id="recognized-count" style="color: var(--primary); font-weight: 600;">0</span> 个单词
+              </div>
+            </div>
+            
+            <div class="input-group">
+              <label class="input-label">选择单词本</label>
+              <select class="select" id="target-book">
+                <option value="default">默认单词本</option>
+              </select>
+            </div>
+
+            <div class="input-group">
+              <label class="input-label">AI 识别结果</label>
+              <div style="max-height: 280px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); padding: 10px;">
+                <table class="editable-table" id="recognition-result">
+                  <thead>
+                    <tr>
+                      <th>英文</th>
+                      <th>中文释义</th>
+                      <th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody id="recognition-tbody">
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <button class="btn btn-secondary" onclick="app.addEmptyRow()" style="margin-top: 10px;">
+              <i class="fa fa-plus"></i> 添加单词
+            </button>
+          </div>
+        </div>
+        <div class="modal-footer" id="camera-footer" style="display: none;">
+          <button class="btn btn-secondary" onclick="app.resetCamera()">重新选择</button>
+          <button class="btn btn-primary" onclick="app.confirmImport()">确认入库</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settings-modal">
+      <div class="modal">
+        <div class="modal-header">
+          <div class="modal-title">设置</div>
+          <button class="modal-close" onclick="app.closeSettings()">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">AI 识别服务</div>
+              <div class="setting-desc">智谱AI GLM-4.6V-Flash (已配置)</div>
+            </div>
+            <button class="btn btn-secondary" onclick="app.openApiSettings()">查看</button>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">管理单词本</div>
+              <div class="setting-desc">创建、重命名或删除单词本</div>
+            </div>
+            <button class="btn btn-secondary" onclick="app.manageBooks()">管理</button>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">清除所有数据</div>
+              <div class="setting-desc">删除所有单词和练习记录</div>
+            </div>
+            <button class="btn btn-danger" onclick="app.clearAllData()">清除</button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="app.closeSettings()">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- API Settings Modal -->
+    <div class="modal-overlay" id="api-modal">
+      <div class="modal">
+        <div class="modal-header">
+          <div class="modal-title">API 配置</div>
+          <button class="modal-close" onclick="app.closeApiSettings()">×</button>
+        </div>
+        <div class="modal-body">
+          <div style="padding: 14px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: var(--radius); margin-bottom: 16px;">
+            <div style="font-size: 14px; color: var(--success); line-height: 1.6;">
+              <strong>当前使用：智谱AI GLM-4.6V-Flash</strong><br>
+              已内置API配置，可直接使用拍照识别功能。
+            </div>
+          </div>
+          
+          <div style="padding: 12px; background: var(--bg-tertiary); border-radius: var(--radius); margin-bottom: 14px;">
+            <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.6;">
+              <strong>API信息：</strong><br>
+              • 提供商：智谱AI<br>
+              • 模型：GLM-4.6V-Flash (免费版)<br>
+              • 功能：支持图片OCR识别、英文单词提取
+            </div>
+          </div>
+          
+          <div style="padding: 12px; background: var(--bg-tertiary); border-radius: var(--radius);">
+            <div style="font-size: 13px; color: var(--text-secondary);">
+              提示：API配置已内置，如需更换请联系管理员。
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="app.closeApiSettings()">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Book Management Modal -->
+    <div class="modal-overlay" id="book-modal">
+      <div class="modal">
+        <div class="modal-header">
+          <div class="modal-title">管理单词本</div>
+          <button class="modal-close" onclick="app.closeBookManagement()">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="input-group">
+            <label class="input-label">新建单词本</label>
+            <div style="display: flex; gap: 10px;">
+              <input type="text" class="input" id="new-book-name" placeholder="单词本名称">
+              <button class="btn btn-primary" onclick="app.createBook()">创建</button>
+            </div>
+          </div>
+          <div style="margin-top: 16px;">
+            <div class="card-title">现有单词本</div>
+            <div id="book-list" class="word-list"></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="app.closeBookManagement()">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loading-overlay" style="display: none;">
+      <div class="spinner"></div>
+      <div class="loading-text" id="loading-text">正在识别...</div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+  </div>
+
+  <script src="image-editor.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
