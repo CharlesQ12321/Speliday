@@ -1152,9 +1152,24 @@
           <span>单词本</span>
         </div>
         
-        <!-- Book Tabs -->
-        <div class="tabs" id="book-tabs">
-          <div class="tab active" data-book="all">全部</div>
+        <!-- Filter Dropdowns -->
+        <div style="margin-bottom: 16px;">
+          <div style="display: flex; gap: 10px;">
+            <div style="flex: 1;">
+              <select id="filter-book" class="select" onchange="app.filterLibrary()">
+                <option value="all">全部单词本</option>
+              </select>
+            </div>
+            <div style="flex: 1;">
+              <select id="filter-error-count" class="select" onchange="app.filterLibrary()">
+                <option value="all">全部错误次数</option>
+                <option value="0">0次错误</option>
+                <option value="1-2">1-2次错误</option>
+                <option value="3-5">3-5次错误</option>
+                <option value="5+">5次以上</option>
+              </select>
+            </div>
+          </div>
         </div>
 
         <!-- Search -->
@@ -1269,7 +1284,7 @@
         </div>
         
         <!-- 设置选项 -->
-        <div class="space-y-4">
+        <div style="display: flex; flex-direction: column; gap: 16px;">
           <!-- 数据管理 -->
           <div>
             <h2 class="card-title" style="text-transform: none; font-size: 14px; margin-bottom: 10px;">数据管理</h2>

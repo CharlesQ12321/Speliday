@@ -193,37 +193,49 @@ const app = {
   },
 
   // Library
-  renderBookTabs() {
-    const tabsContainer = document.getElementById('book-tabs');
-    tabsContainer.innerHTML = '<div class="tab active" data-book="all" onclick="app.selectBook("all")">全部</div>';
+  updateFilterBookSelect() {
+    const select = document.getElementById('filter-book');
+    if (!select) return;
+    
+    // 保留第一个选项"全部单词本"
+    const currentValue = select.value;
+    select.innerHTML = '<option value="all">全部单词本</option>';
     
     state.books.forEach(book => {
-      const tab = document.createElement('div');
-      tab.className = 'tab';
-      tab.dataset.book = book.bookId;
-      tab.textContent = book.bookName;
-      tab.onclick = () => this.selectBook(book.bookId);
-      tabsContainer.appendChild(tab);
-    });
-  },
-
-  async selectBook(bookId) {
-    state.currentBook = bookId;
-    
-    // Update tabs
-    document.querySelectorAll('#book-tabs .tab').forEach(tab => {
-      tab.classList.toggle('active', tab.dataset.book === bookId);
+      const option = document.createElement('option');
+      option.value = book.bookId;
+      option.textContent = book.bookName;
+      select.appendChild(option);
     });
     
-    await this.renderLibrary();
+    select.value = currentValue || 'all';
   },
 
-  async renderLibrary() {
+  async filterLibrary() {
+    const bookFilter = document.getElementById('filter-book').value;
+    const errorFilter = document.getElementById('filter-error-count').value;
+    
     let words;
-    if (state.currentBook === 'all') {
+    
+    // 先按单词本筛选
+    if (bookFilter === 'all') {
       words = await db.words.orderBy('word').toArray();
     } else {
-      words = await db.words.where('bookId').equals(state.currentBook).toArray();
+      words = await db.words.where('bookId').equals(bookFilter).toArray();
+    }
+    
+    // 再按错误次数筛选
+    if (errorFilter !== 'all') {
+      words = words.filter(word => {
+        const count = word.errorCount;
+        switch (errorFilter) {
+          case '0': return count === 0;
+          case '1-2': return count >= 1 && count <= 2;
+          case '3-5': return count >= 3 && count <= 5;
+          case '5+': return count > 5;
+          default: return true;
+        }
+      });
     }
     
     const container = document.getElementById('library-words');
@@ -232,8 +244,8 @@ const app = {
       container.innerHTML = `
         <div class="empty-state">
           <div class="empty-icon">📖</div>
-          <div class="empty-title">单词本为空</div>
-          <div class="empty-subtitle">去录入一些单词吧</div>
+          <div class="empty-title">暂无符合条件的单词</div>
+          <div class="empty-subtitle">尝试调整筛选条件</div>
         </div>
       `;
       return;
@@ -255,16 +267,48 @@ const app = {
     `).join('');
   },
 
+  async renderLibrary() {
+    // 初始化筛选下拉菜单选项
+    this.updateFilterBookSelect();
+    
+    // 使用筛选功能渲染列表
+    await this.filterLibrary();
+  },
+
   async searchWords(query) {
-    if (!query.trim()) {
-      await this.renderLibrary();
-      return;
+    // 获取当前筛选条件
+    const bookFilter = document.getElementById('filter-book').value;
+    const errorFilter = document.getElementById('filter-error-count').value;
+    
+    // 先获取基础单词列表
+    let words;
+    if (bookFilter === 'all') {
+      words = await db.words.orderBy('word').toArray();
+    } else {
+      words = await db.words.where('bookId').equals(bookFilter).toArray();
     }
     
-    const words = await db.words.filter(w => 
-      w.word.toLowerCase().includes(query.toLowerCase()) ||
-      w.translation.includes(query)
-    ).toArray();
+    // 按错误次数筛选
+    if (errorFilter !== 'all') {
+      words = words.filter(word => {
+        const count = word.errorCount;
+        switch (errorFilter) {
+          case '0': return count === 0;
+          case '1-2': return count >= 1 && count <= 2;
+          case '3-5': return count >= 3 && count <= 5;
+          case '5+': return count > 5;
+          default: return true;
+        }
+      });
+    }
+    
+    // 再按搜索关键词筛选
+    if (query.trim()) {
+      words = words.filter(w => 
+        w.word.toLowerCase().includes(query.toLowerCase()) ||
+        w.translation.includes(query)
+      );
+    }
     
     const container = document.getElementById('library-words');
     
