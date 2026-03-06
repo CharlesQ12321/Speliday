@@ -1154,15 +1154,21 @@ const app = {
       // 拼写错误，重置连续正确计数
       state.consecutiveCorrectCount = 0;
       
-      // Increment error count
+      // Increment error count - 先从数据库获取最新值，确保正确累加
+      const currentWord = await db.words.get(word.id);
+      const newErrorCount = (currentWord?.errorCount || 0) + 1;
       await db.words.update(word.id, {
-        errorCount: word.errorCount + 1,
+        errorCount: newErrorCount,
         lastPracticed: Date.now()
       });
 
-      // 记录本轮错误单词
-      if (!state.wrongWordsInRound.find(w => w.id === word.id)) {
-        state.wrongWordsInRound.push(word);
+      // 记录本轮错误单词（使用更新后的错误次数）
+      const existingIndex = state.wrongWordsInRound.findIndex(w => w.id === word.id);
+      const updatedWordData = { ...word, errorCount: newErrorCount };
+      if (existingIndex === -1) {
+        state.wrongWordsInRound.push(updatedWordData);
+      } else {
+        state.wrongWordsInRound[existingIndex] = updatedWordData;
       }
 
       // Highlight differences
