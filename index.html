@@ -1087,6 +1087,94 @@
       font-size: 20px;
       margin-bottom: 2px;
     }
+
+    /* Praise Animation Styles */
+    .praise-animation {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 10000;
+      pointer-events: none;
+      animation: praisePop 2.5s ease-out forwards;
+      text-align: center;
+    }
+
+    .praise-text {
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      text-shadow: 
+        0 0 20px currentColor,
+        0 0 40px currentColor,
+        0 0 60px currentColor,
+        3px 3px 6px rgba(0,0,0,0.3);
+      animation: praiseScale 2.5s ease-out forwards;
+      font-family: 'Inter', 'Noto Sans SC', sans-serif;
+    }
+
+    .praise-streak {
+      font-size: 24px;
+      font-weight: 700;
+      color: #FFD700;
+      margin-top: 10px;
+      text-shadow: 
+        0 0 10px #FFD700,
+        0 0 20px #FF8C00,
+        2px 2px 4px rgba(0,0,0,0.3);
+      animation: streakPulse 2.5s ease-out forwards;
+    }
+
+    @keyframes praisePop {
+      0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.3);
+      }
+      15% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1.2);
+      }
+      25% {
+        transform: translate(-50%, -50%) scale(1);
+      }
+      75% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1) translateY(-20px);
+      }
+      100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.8) translateY(-50px);
+      }
+    }
+
+    @keyframes praiseScale {
+      0% {
+        filter: brightness(1);
+      }
+      15% {
+        filter: brightness(1.5);
+      }
+      25% {
+        filter: brightness(1);
+      }
+      100% {
+        filter: brightness(1);
+      }
+    }
+
+    @keyframes streakPulse {
+      0%, 100% {
+        transform: scale(1);
+      }
+      50% {
+        transform: scale(1.1);
+      }
+    }
+
+    /* Firework Particle Styles */
+    .firework-particle {
+      will-change: transform, opacity;
+    }
   </style>
 </head>
 <body>

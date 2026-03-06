@@ -30,7 +30,9 @@ const state = {
   mediaStream: null,
   currentCameraFacing: 'environment',
   currentImageData: null,
-  currentRotation: 0
+  currentRotation: 0,
+  // 连续正确拼写计数
+  consecutiveCorrectCount: 0
 };
 
 // Initialize App
@@ -1018,6 +1020,7 @@ const app = {
     state.practiceWords = this.shuffleArray(words).slice(0, Math.min(count, words.length));
     state.currentPracticeIndex = 0;
     state.wrongWordsInRound = []; // 重置本轮错误单词记录
+    state.consecutiveCorrectCount = 0; // 重置连续正确计数
 
     // Show practice area
     document.getElementById('practice-setup').style.display = 'none';
@@ -1087,6 +1090,12 @@ const app = {
     const isCorrect = input === word.word.toLowerCase();
 
     if (isCorrect) {
+      // 增加连续正确计数
+      state.consecutiveCorrectCount++;
+      
+      // 显示赞赏动画
+      this.showPraiseAnimation(state.consecutiveCorrectCount);
+
       feedback.innerHTML = `
         <div>✅ 回答正确！</div>
         <div class="correct-word">${word.word}</div>
@@ -1100,8 +1109,11 @@ const app = {
       setTimeout(() => {
         state.currentPracticeIndex++;
         this.showNextWord();
-      }, 1500);
+      }, 2000);
     } else {
+      // 拼写错误，重置连续正确计数
+      state.consecutiveCorrectCount = 0;
+      
       // Increment error count
       await db.words.update(word.id, {
         errorCount: word.errorCount + 1,
@@ -1146,6 +1158,105 @@ const app = {
           lastPracticed: 0
         });
       }
+    }
+  },
+
+  // 显示赞赏动画
+  showPraiseAnimation(consecutiveCount) {
+    const praiseTexts = [
+      { count: 1, text: 'Good', color: '#10B981', fontSize: '48px' },
+      { count: 2, text: 'Excellent', color: '#3B82F6', fontSize: '52px' },
+      { count: 3, text: 'Outstanding', color: '#8B5CF6', fontSize: '56px' },
+      { count: 4, text: 'Brilliant', color: '#F59E0B', fontSize: '60px' },
+      { count: 5, text: 'Bravo Combo', color: '#EF4444', fontSize: '64px' }
+    ];
+
+    // 根据连续次数确定显示文本
+    let praiseConfig;
+    if (consecutiveCount >= 5) {
+      praiseConfig = praiseTexts[4];
+    } else {
+      praiseConfig = praiseTexts.find(p => p.count === consecutiveCount) || praiseTexts[0];
+    }
+
+    if (!praiseConfig) return;
+
+    // 创建赞赏元素
+    const praiseEl = document.createElement('div');
+    praiseEl.className = 'praise-animation';
+    praiseEl.innerHTML = `
+      <div class="praise-text" style="color: ${praiseConfig.color}; font-size: ${praiseConfig.fontSize};">
+        ${praiseConfig.text}
+      </div>
+      ${consecutiveCount >= 2 ? `<div class="praise-streak">${consecutiveCount} 连击!</div>` : ''}
+    `;
+    document.body.appendChild(praiseEl);
+
+    // 触发烟花效果
+    this.triggerFireworks(consecutiveCount);
+
+    // 动画结束后移除元素
+    setTimeout(() => {
+      praiseEl.remove();
+    }, 2500);
+  },
+
+  // 触发烟花效果
+  triggerFireworks(intensity) {
+    const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E2'];
+    const particleCount = Math.min(30 + intensity * 10, 80); // 根据强度增加粒子数量
+    const burstCount = intensity >= 5 ? 3 : (intensity >= 3 ? 2 : 1); // 连续次数越高，烟花 burst 越多
+
+    for (let b = 0; b < burstCount; b++) {
+      setTimeout(() => {
+        this.createFireworkBurst(particleCount, colors);
+      }, b * 300);
+    }
+  },
+
+  // 创建单次烟花爆炸
+  createFireworkBurst(particleCount, colors) {
+    const centerX = window.innerWidth / 2;
+    const centerY = window.innerHeight / 2;
+
+    for (let i = 0; i < particleCount; i++) {
+      const particle = document.createElement('div');
+      particle.className = 'firework-particle';
+      
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      const angle = (Math.PI * 2 * i) / particleCount + Math.random() * 0.5;
+      const velocity = 100 + Math.random() * 150;
+      const size = 6 + Math.random() * 8;
+      
+      particle.style.cssText = `
+        position: fixed;
+        width: ${size}px;
+        height: ${size}px;
+        background: ${color};
+        border-radius: 50%;
+        left: ${centerX}px;
+        top: ${centerY}px;
+        pointer-events: none;
+        z-index: 9999;
+        box-shadow: 0 0 ${size * 2}px ${color}, 0 0 ${size * 4}px ${color};
+      `;
+      
+      document.body.appendChild(particle);
+
+      // 动画
+      const duration = 800 + Math.random() * 600;
+      const destinationX = centerX + Math.cos(angle) * velocity;
+      const destinationY = centerY + Math.sin(angle) * velocity;
+
+      const animation = particle.animate([
+        { transform: 'translate(0, 0) scale(1)', opacity: 1 },
+        { transform: `translate(${destinationX - centerX}px, ${destinationY - centerY}px) scale(0)`, opacity: 0 }
+      ], {
+        duration: duration,
+        easing: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)'
+      });
+
+      animation.onfinish = () => particle.remove();
     }
   },
 
