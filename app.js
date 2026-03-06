@@ -5,11 +5,12 @@
 
 // Database Setup
 const db = new Dexie('SnapWordsDB');
-db.version(2).stores({
-  words: '++id, word, translation, bookId, errorCount, createdAt, lastPracticed',
+db.version(5).stores({
+  words: '++id, word, translation, *bookIds, errorCount, correctCount, createdAt, lastPracticed',
   books: '++id, bookId, bookName, createdAt',
   settings: 'key, value',
-  practiceScores: '++id, playerName, totalScore, wordCount, correctCount, createdAt'
+  practiceScores: '++id, playerName, totalScore, wordCount, correctCount, createdAt',
+  dailyPracticeSessions: '++id, date, completedAt'
 });
 
 // Application State
@@ -24,7 +25,7 @@ const state = {
   words: [],
   apiSettings: {
     provider: 'glm',  // 默认使用智谱AI GLM-4.6V-Flash
-    key: 'd54dc5bab2624d67b0525a82958b7ca9.F5u7mVKLCD5NHQt5',  // 内置API Key
+    key: '5df4868f29c14aaebb1c1a5112468741.s5pttICchOoYzZqw',  // 内置API Key
     url: ''
   },
   // Camera and Image Processing
@@ -78,6 +79,28 @@ const app = {
         createdAt: Date.now()
       });
     }
+
+    // 数据迁移：将旧的 bookId 转换为 bookIds 数组
+    await this.migrateBookIdToBookIds();
+  },
+
+  // 数据迁移：将单 bookId 转换为 bookIds 数组
+  async migrateBookIdToBookIds() {
+    try {
+      const words = await db.words.toArray();
+      for (const word of words) {
+        // 如果单词有 bookId 但没有 bookIds，进行迁移
+        if (word.bookId && (!word.bookIds || !Array.isArray(word.bookIds))) {
+          await db.words.update(word.id, {
+            bookIds: [word.bookId],
+            bookId: undefined // 删除旧的 bookId 字段
+          });
+        }
+      }
+      console.log('BookId to BookIds migration completed');
+    } catch (error) {
+      console.error('Migration error:', error);
+    }
   },
 
   async loadSettings() {
@@ -119,6 +142,13 @@ const app = {
     });
   },
 
+  // 检查单词是否属于某个单词本
+  wordBelongsToBook(word, bookId) {
+    if (bookId === 'all') return true;
+    const bookIds = word.bookIds || [];
+    return bookIds.includes(bookId);
+  },
+
   // Navigation
   navigate(page) {
     state.currentPage = page;
@@ -153,12 +183,19 @@ const app = {
     const totalWords = await db.words.count();
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const todayPractice = await db.words.filter(w => w.lastPracticed >= today.getTime()).count();
+    const todayEnd = new Date(today);
+    todayEnd.setHours(23, 59, 59, 999);
+
+    // 统计今日完成的完整练习次数
+    const todayPracticeCount = await db.dailyPracticeSessions
+      .filter(s => s.completedAt >= today.getTime() && s.completedAt <= todayEnd.getTime())
+      .count();
+
     const errorWords = await db.words.filter(w => w.errorCount >= 3).count();
     const bookCount = await db.books.count();
-    
+
     document.getElementById('stat-total-words').textContent = totalWords;
-    document.getElementById('stat-today-practice').textContent = todayPractice;
+    document.getElementById('stat-today-practice').textContent = todayPracticeCount;
     document.getElementById('stat-error-words').textContent = errorWords;
     document.getElementById('stat-books').textContent = bookCount;
   },
@@ -195,6 +232,7 @@ const app = {
           <div class="word-translation">${word.translation}</div>
         </div>
         <div class="word-meta">
+          <span class="error-badge zero">${word.correctCount || 0} 次正确</span>
           <span class="error-badge">${word.errorCount} 次错误</span>
         </div>
       </div>
@@ -224,13 +262,12 @@ const app = {
     const bookFilter = document.getElementById('filter-book').value;
     const errorFilter = document.getElementById('filter-error-count').value;
     
-    let words;
+    // 获取所有单词，然后按单词本筛选
+    let words = await db.words.orderBy('word').toArray();
     
     // 先按单词本筛选
-    if (bookFilter === 'all') {
-      words = await db.words.orderBy('word').toArray();
-    } else {
-      words = await db.words.where('bookId').equals(bookFilter).toArray();
+    if (bookFilter !== 'all') {
+      words = words.filter(word => this.wordBelongsToBook(word, bookFilter));
     }
     
     // 再按错误次数筛选
@@ -267,8 +304,11 @@ const app = {
           <div class="word-translation">${word.translation}</div>
         </div>
         <div class="word-meta">
+          <span class="error-badge zero">
+            ${word.correctCount || 0} 次正确
+          </span>
           <span class="error-badge ${word.errorCount === 0 ? 'zero' : ''}">
-            ${word.errorCount === 0 ? '✓' : word.errorCount + ' 次错误'}
+            ${word.errorCount} 次错误
           </span>
           <button class="table-btn" onclick="app.deleteWord(${word.id}, event)">🗑️</button>
         </div>
@@ -279,7 +319,7 @@ const app = {
   async renderLibrary() {
     // 初始化筛选下拉菜单选项
     this.updateFilterBookSelect();
-    
+
     // 使用筛选功能渲染列表
     await this.filterLibrary();
   },
@@ -290,11 +330,11 @@ const app = {
     const errorFilter = document.getElementById('filter-error-count').value;
     
     // 先获取基础单词列表
-    let words;
-    if (bookFilter === 'all') {
-      words = await db.words.orderBy('word').toArray();
-    } else {
-      words = await db.words.where('bookId').equals(bookFilter).toArray();
+    let words = await db.words.orderBy('word').toArray();
+    
+    // 按单词本筛选
+    if (bookFilter !== 'all') {
+      words = words.filter(word => this.wordBelongsToBook(word, bookFilter));
     }
     
     // 按错误次数筛选
@@ -337,8 +377,11 @@ const app = {
           <div class="word-translation">${word.translation}</div>
         </div>
         <div class="word-meta">
+          <span class="error-badge zero">
+            ${word.correctCount || 0} 次正确
+          </span>
           <span class="error-badge ${word.errorCount === 0 ? 'zero' : ''}">
-            ${word.errorCount === 0 ? '✓' : word.errorCount + ' 次错误'}
+            ${word.errorCount} 次错误
           </span>
           <button class="table-btn" onclick="app.deleteWord(${word.id}, event)">🗑️</button>
         </div>
@@ -920,8 +963,9 @@ const app = {
         const newId = await db.words.add({
           word: item.word,
           translation: item.translation,
-          bookId: bookId,
+          bookIds: [bookId],
           errorCount: 0,
+          correctCount: 0,
           createdAt: Date.now(),
           lastPracticed: 0
         });
@@ -929,26 +973,32 @@ const app = {
           id: newId,
           word: item.word,
           translation: item.translation,
-          bookId: bookId,
-          errorCount: 0
+          bookIds: [bookId],
+          errorCount: 0,
+          correctCount: 0
         });
       }
     }
 
     // Handle duplicates
     for (const dup of duplicates) {
-      const action = confirm(`单词 "${dup.word}" 已存在（释义：${dup.existing.translation}）。是否覆盖？`);
+      const action = confirm(`单词 "${dup.word}" 已存在（释义：${dup.existing.translation}）。是否将该单词添加到当前单词本？`);
       if (action) {
-        await db.words.update(dup.existing.id, {
-          translation: dup.translation,
-          bookId: bookId
-        });
+        // 将新单词本添加到现有单词的 bookIds 中
+        const existingBookIds = dup.existing.bookIds || [];
+        if (!existingBookIds.includes(bookId)) {
+          await db.words.update(dup.existing.id, {
+            translation: dup.translation,
+            bookIds: [...existingBookIds, bookId]
+          });
+        }
         importedWords.push({
           id: dup.existing.id,
           word: dup.word,
           translation: dup.translation,
-          bookId: bookId,
-          errorCount: dup.existing.errorCount || 0
+          bookIds: [...existingBookIds, bookId],
+          errorCount: dup.existing.errorCount || 0,
+          correctCount: dup.existing.correctCount || 0
         });
       }
     }
@@ -1006,7 +1056,7 @@ const app = {
 
     let words;
     if (mode === 'error') {
-      // High error words
+      // High error words - 错误次数>=3的单词
       words = await db.words.filter(w => w.errorCount >= 3).toArray();
       if (words.length === 0) {
         this.showToast('没有高频错词，先去练习吧！', 'error');
@@ -1015,7 +1065,9 @@ const app = {
     } else if (bookId === 'all') {
       words = await db.words.toArray();
     } else {
-      words = await db.words.where('bookId').equals(bookId).toArray();
+      // 获取所有单词，然后筛选属于该单词本的
+      words = await db.words.toArray();
+      words = words.filter(word => this.wordBelongsToBook(word, bookId));
     }
 
     if (words.length === 0) {
@@ -1142,8 +1194,13 @@ const app = {
       `;
       feedback.className = 'practice-feedback correct show';
 
-      // Update last practiced
-      await db.words.update(word.id, { lastPracticed: Date.now() });
+      // Update last practiced and correct count
+      const currentWord = await db.words.get(word.id);
+      const newCorrectCount = (currentWord?.correctCount || 0) + 1;
+      await db.words.update(word.id, {
+        lastPracticed: Date.now(),
+        correctCount: newCorrectCount
+      });
 
       // Auto next after delay
       setTimeout(() => {
@@ -1192,16 +1249,11 @@ const app = {
     // Check if should add to high error book
     const updatedWord = await db.words.get(word.id);
     if (updatedWord.errorCount >= 3) {
-      // Check if already in high error book
-      const existing = await db.words.get({ word: word.word, bookId: 'high-error' });
-      if (!existing) {
-        await db.words.add({
-          word: word.word,
-          translation: word.translation,
-          bookId: 'high-error',
-          errorCount: 0,
-          createdAt: Date.now(),
-          lastPracticed: 0
+      // 将 high-error 添加到单词的 bookIds 中（如果不存在）
+      const currentBookIds = updatedWord.bookIds || [];
+      if (!currentBookIds.includes('high-error')) {
+        await db.words.update(word.id, {
+          bookIds: [...currentBookIds, 'high-error']
         });
       }
     }
@@ -1343,22 +1395,33 @@ const app = {
   // 保存练习成绩
   async savePracticeScore() {
     const playerName = document.getElementById('player-name-input').value.trim();
-    
+
     if (!playerName) {
       this.showToast('请输入姓名', 'error');
       return;
     }
-    
+
+    const now = Date.now();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     await db.practiceScores.add({
       playerName: playerName,
       totalScore: state.practiceScore,
       wordCount: state.totalWordsInPractice,
       correctCount: state.correctWordsInPractice,
-      createdAt: Date.now()
+      createdAt: now
     });
-    
+
+    // 记录一次完整的练习完成
+    await db.dailyPracticeSessions.add({
+      date: today.getTime(),
+      completedAt: now
+    });
+
     this.closePracticeCompleteModal();
     this.endPractice();
+    this.updateStats();
     this.showToast('成绩已保存！', 'success');
   },
 
@@ -1507,7 +1570,7 @@ const app = {
       id: word.id,
       word: word.word,
       translation: word.translation,
-      bookId: word.bookId,
+      bookIds: word.bookIds,
       errorCount: word.errorCount
     }));
     
@@ -1527,7 +1590,7 @@ const app = {
       books: sanitizedBooks,
       practiceScores: scores,
       exportDate: new Date().toISOString(),
-      version: '1.1'
+      version: '1.2'
     };
     
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -1681,10 +1744,22 @@ const app = {
   },
 
   async deleteBook(bookId) {
-    if (!confirm('确定要删除这个单词本吗？其中的单词将被移至默认单词本。')) return;
+    if (!confirm('确定要删除这个单词本吗？其中的单词将从该单词本中移除，如果单词不属于任何其他单词本，则会被移至默认单词本。')) return;
     
-    // Move words to default
-    await db.words.where('bookId').equals(bookId).modify({ bookId: 'default' });
+    // 获取所有单词，处理属于该单词本的单词
+    const allWords = await db.words.toArray();
+    for (const word of allWords) {
+      const bookIds = word.bookIds || [];
+      if (bookIds.includes(bookId)) {
+        // 从 bookIds 中移除该单词本
+        const newBookIds = bookIds.filter(id => id !== bookId);
+        // 如果移除后没有单词本了，添加到默认单词本
+        if (newBookIds.length === 0) {
+          newBookIds.push('default');
+        }
+        await db.words.update(word.id, { bookIds: newBookIds });
+      }
+    }
     
     // Delete book
     const book = await db.books.get({ bookId });
