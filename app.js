@@ -5,10 +5,11 @@
 
 // Database Setup
 const db = new Dexie('SnapWordsDB');
-db.version(1).stores({
+db.version(2).stores({
   words: '++id, word, translation, bookId, errorCount, createdAt, lastPracticed',
   books: '++id, bookId, bookName, createdAt',
-  settings: 'key, value'
+  settings: 'key, value',
+  practiceScores: '++id, playerName, totalScore, wordCount, correctCount, createdAt'
 });
 
 // Application State
@@ -32,7 +33,13 @@ const state = {
   currentImageData: null,
   currentRotation: 0,
   // 连续正确拼写计数
-  consecutiveCorrectCount: 0
+  consecutiveCorrectCount: 0,
+  // 练习积分
+  practiceScore: 0,
+  // 本次练习总单词数
+  totalWordsInPractice: 0,
+  // 本次练习正确数
+  correctWordsInPractice: 0
 };
 
 // Initialize App
@@ -1021,6 +1028,9 @@ const app = {
     state.currentPracticeIndex = 0;
     state.wrongWordsInRound = []; // 重置本轮错误单词记录
     state.consecutiveCorrectCount = 0; // 重置连续正确计数
+    state.practiceScore = 0; // 重置练习积分
+    state.totalWordsInPractice = state.practiceWords.length; // 记录总单词数
+    state.correctWordsInPractice = 0; // 重置正确数
 
     // Show practice area
     document.getElementById('practice-setup').style.display = 'none';
@@ -1050,8 +1060,7 @@ const app = {
       }
 
       // 没有错误单词，练习真正完成
-      this.showToast('🎉 恭喜！所有单词拼写正确，练习完成！', 'success');
-      this.endPractice();
+      this.showPracticeCompleteModal();
       return;
     }
 
@@ -1066,6 +1075,9 @@ const app = {
     document.getElementById('practice-current').textContent = state.currentPracticeIndex + 1;
     document.getElementById('practice-total').textContent = state.practiceWords.length;
 
+    // Update current score display
+    this.updateScoreDisplay();
+
     // Hide feedback
     const feedback = document.getElementById('practice-feedback');
     feedback.classList.remove('show', 'correct', 'incorrect');
@@ -1074,6 +1086,26 @@ const app = {
     const btn = document.getElementById('practice-check-btn');
     btn.textContent = '检查';
     btn.onclick = () => this.checkAnswer();
+  },
+
+  // 更新积分显示
+  updateScoreDisplay() {
+    const scoreEl = document.getElementById('practice-current-score');
+    if (scoreEl) {
+      scoreEl.textContent = state.practiceScore;
+    }
+  },
+
+  // 更新积分显示并添加动画
+  updateScoreDisplayWithAnimation() {
+    const scoreEl = document.getElementById('practice-current-score');
+    if (scoreEl) {
+      scoreEl.textContent = state.practiceScore;
+      scoreEl.classList.add('score-updated');
+      setTimeout(() => {
+        scoreEl.classList.remove('score-updated');
+      }, 500);
+    }
   },
 
   async checkAnswer() {
@@ -1093,11 +1125,19 @@ const app = {
       // 增加连续正确计数
       state.consecutiveCorrectCount++;
       
+      // 计算本次得分：第1次1分，每次+1分，最高5分
+      const pointsEarned = Math.min(state.consecutiveCorrectCount, 5);
+      state.practiceScore += pointsEarned;
+      state.correctWordsInPractice++;
+      
+      // 更新积分显示并添加动画
+      this.updateScoreDisplayWithAnimation();
+      
       // 显示赞赏动画
       this.showPraiseAnimation(state.consecutiveCorrectCount);
 
       feedback.innerHTML = `
-        <div>✅ 回答正确！</div>
+        <div>✅ 回答正确！+${pointsEarned}分</div>
         <div class="correct-word">${word.word}</div>
       `;
       feedback.className = 'practice-feedback correct show';
@@ -1275,12 +1315,62 @@ const app = {
     return result;
   },
 
+  // 显示练习完成弹窗
+  showPracticeCompleteModal() {
+    const modal = document.getElementById('practice-complete-modal');
+    const scoreDisplay = document.getElementById('complete-score');
+    const statsDisplay = document.getElementById('complete-stats');
+    
+    scoreDisplay.textContent = state.practiceScore;
+    statsDisplay.innerHTML = `
+      <div>总单词数: ${state.totalWordsInPractice}</div>
+      <div>正确数: ${state.correctWordsInPractice}</div>
+      <div>正确率: ${Math.round((state.correctWordsInPractice / state.totalWordsInPractice) * 100)}%</div>
+    `;
+    
+    modal.classList.add('active');
+    
+    // 触发庆祝烟花
+    this.triggerFireworks(5);
+  },
+
+  // 保存练习成绩
+  async savePracticeScore() {
+    const playerName = document.getElementById('player-name-input').value.trim();
+    
+    if (!playerName) {
+      this.showToast('请输入姓名', 'error');
+      return;
+    }
+    
+    await db.practiceScores.add({
+      playerName: playerName,
+      totalScore: state.practiceScore,
+      wordCount: state.totalWordsInPractice,
+      correctCount: state.correctWordsInPractice,
+      createdAt: Date.now()
+    });
+    
+    this.closePracticeCompleteModal();
+    this.endPractice();
+    this.showToast('成绩已保存！', 'success');
+  },
+
+  // 关闭练习完成弹窗
+  closePracticeCompleteModal() {
+    document.getElementById('practice-complete-modal').classList.remove('active');
+  },
+
   endPractice() {
     document.getElementById('practice-setup').style.display = 'block';
     document.getElementById('practice-area').style.display = 'none';
     state.practiceWords = [];
     state.currentPracticeIndex = 0;
     state.wrongWordsInRound = [];
+    state.practiceScore = 0;
+    state.totalWordsInPractice = 0;
+    state.correctWordsInPractice = 0;
+    state.consecutiveCorrectCount = 0;
   },
 
   exitPractice() {
@@ -1295,6 +1385,62 @@ const app = {
   async renderStats() {
     // Render chart
     this.renderErrorChart();
+    // Render practice scores
+    this.renderPracticeScores();
+  },
+
+  // 渲染练习成绩列表
+  async renderPracticeScores() {
+    const container = document.getElementById('practice-scores-list');
+    if (!container) return;
+
+    // 获取所有成绩，按分数降序排列
+    const scores = await db.practiceScores
+      .orderBy('totalScore')
+      .reverse()
+      .limit(20)
+      .toArray();
+
+    if (scores.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">🏆</div>
+          <div class="empty-title">暂无成绩记录</div>
+          <div class="empty-subtitle">完成练习后成绩将显示在这里</div>
+        </div>
+      `;
+      return;
+    }
+
+    // 按分数分组显示
+    const sortedScores = scores.sort((a, b) => b.totalScore - a.totalScore);
+    
+    container.innerHTML = `
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        ${sortedScores.map((score, index) => {
+          const rank = index + 1;
+          let rankBadge = '';
+          if (rank === 1) rankBadge = '🥇';
+          else if (rank === 2) rankBadge = '🥈';
+          else if (rank === 3) rankBadge = '🥉';
+          else rankBadge = `<span style="color: var(--text-muted); font-weight: 600;">#${rank}</span>`;
+          
+          const date = new Date(score.createdAt).toLocaleDateString('zh-CN');
+          const accuracy = Math.round((score.correctCount / score.wordCount) * 100);
+          
+          return `
+            <div style="display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--bg-tertiary); border-radius: var(--radius); border: 1px solid var(--border);">
+              <div style="font-size: 24px; min-width: 36px; text-align: center;">${rankBadge}</div>
+              <div style="flex: 1;">
+                <div style="font-weight: 600; color: var(--text-primary); font-size: 16px;">${score.playerName}</div>
+                <div style="font-size: 12px; color: var(--text-muted);">${date} · ${score.wordCount}词 · 正确率${accuracy}%</div>
+              </div>
+              <div style="font-size: 24px; font-weight: 700; color: var(--primary);">${score.totalScore}</div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
   },
 
   async renderErrorChart() {
@@ -1366,12 +1512,16 @@ const app = {
       bookId: book.bookId,
       bookName: book.bookName
     }));
+
+    // 获取练习成绩
+    const scores = await db.practiceScores.toArray();
     
     const data = {
       words: sanitizedWords,
       books: sanitizedBooks,
+      practiceScores: scores,
       exportDate: new Date().toISOString(),
-      version: '1.0'
+      version: '1.1'
     };
     
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -1409,6 +1559,7 @@ const app = {
       // Clear existing data
       await db.words.clear();
       await db.books.clear();
+      await db.practiceScores.clear();
       
       // Import books
       if (data.books) {
@@ -1420,6 +1571,13 @@ const app = {
       // Import words
       for (const word of data.words) {
         await db.words.add(word);
+      }
+
+      // Import practice scores
+      if (data.practiceScores) {
+        for (const score of data.practiceScores) {
+          await db.practiceScores.add(score);
+        }
       }
       
       await this.loadBooks();
@@ -1587,7 +1745,17 @@ const app = {
     document.getElementById('practice-input')?.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') {
         const btn = document.getElementById('practice-check-btn');
-        btn.click();
+        // 根据按钮当前文本决定行为
+        if (btn && !btn.disabled) {
+          btn.click();
+        }
+      }
+    });
+
+    // 练习完成弹窗中的姓名输入框也支持回车保存
+    document.getElementById('player-name-input')?.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        this.savePracticeScore();
       }
     });
   }
