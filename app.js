@@ -80,8 +80,30 @@ const app = {
       });
     }
 
+    // 初始化高频错词设置
+    await this.initHighErrorSettings();
+
     // 数据迁移：将旧的 bookId 转换为 bookIds 数组
     await this.migrateBookIdToBookIds();
+  },
+
+  // 初始化高频错词设置
+  async initHighErrorSettings() {
+    const defaultSettings = {
+      minPracticeCount: 5,        // 最少练习次数（低于此次数不计算正确率）
+      accuracyThreshold: 60,      // 正确率阈值（%）
+      errorCountThreshold: 3      // 错误次数阈值
+    };
+
+    for (const [key, value] of Object.entries(defaultSettings)) {
+      const existing = await db.settings.get({ key: `highError_${key}` });
+      if (!existing) {
+        await db.settings.add({
+          key: `highError_${key}`,
+          value: value
+        });
+      }
+    }
   },
 
   // 数据迁移：将单 bookId 转换为 bookIds 数组
@@ -107,6 +129,34 @@ const app = {
     // API Key 已内置在代码中，不从本地存储加载
     // 保持默认配置：智谱AI GLM-4.6V-Flash
     console.log('Using built-in API configuration');
+  },
+
+  // 加载高频错词设置
+  async loadHighErrorSettings() {
+    const settings = {};
+    const keys = ['minPracticeCount', 'accuracyThreshold', 'errorCountThreshold'];
+    
+    for (const key of keys) {
+      const setting = await db.settings.get({ key: `highError_${key}` });
+      settings[key] = setting ? setting.value : this.getDefaultHighErrorSetting(key);
+    }
+    
+    return settings;
+  },
+
+  // 获取默认高频错词设置
+  getDefaultHighErrorSetting(key) {
+    const defaults = {
+      minPracticeCount: 5,
+      accuracyThreshold: 60,
+      errorCountThreshold: 3
+    };
+    return defaults[key];
+  },
+
+  // 保存高频错词设置
+  async saveHighErrorSetting(key, value) {
+    await db.settings.update(`highError_${key}`, { value: value });
   },
 
   async loadBooks() {
@@ -174,7 +224,8 @@ const app = {
       this.updateStats();
       this.renderRecentWords();
     } else if (page === 'settings') {
-      // 设置页面不需要刷新数据
+      // 加载高频错词设置
+      this.loadHighErrorSettingsToPage();
     }
   },
 
@@ -191,7 +242,13 @@ const app = {
       .filter(s => s.completedAt >= today.getTime() && s.completedAt <= todayEnd.getTime())
       .count();
 
-    const errorWords = await db.words.filter(w => w.errorCount >= 3).count();
+    // 统计高频错词数量（属于 high-error 单词本的单词）
+    const allWords = await db.words.toArray();
+    const errorWords = allWords.filter(w => {
+      const bookIds = w.bookIds || [];
+      return bookIds.includes('high-error');
+    }).length;
+    
     const bookCount = await db.books.count();
 
     document.getElementById('stat-total-words').textContent = totalWords;
@@ -202,13 +259,18 @@ const app = {
 
   // Recent Words
   async renderRecentWords() {
-    // 获取高频错词（错误次数>=1），按错误次数降序排列，最多显示5个
-    const errorWords = await db.words
-      .filter(w => w.errorCount >= 1)
-      .toArray();
+    // 加载高频错词设置
+    const settings = await this.loadHighErrorSettings();
+    
+    // 获取所有单词，筛选出高频错词
+    const allWords = await db.words.toArray();
+    const highErrorWords = allWords.filter(word => {
+      const bookIds = word.bookIds || [];
+      return bookIds.includes('high-error');
+    });
     
     // 按错误次数降序排序，取前5个
-    const topErrorWords = errorWords
+    const topErrorWords = highErrorWords
       .sort((a, b) => b.errorCount - a.errorCount)
       .slice(0, 5);
     
@@ -218,25 +280,28 @@ const app = {
       container.innerHTML = `
         <div class="empty-state">
           <div class="empty-icon">🎉</div>
-          <div class="empty-title">暂无错词</div>
-          <div class="empty-subtitle">继续保持，加油！</div>
+          <div class="empty-title">暂无高频错词</div>
+          <div class="empty-subtitle">当前设置：正确率低于${settings.accuracyThreshold}%且错误≥${settings.errorCountThreshold}次</div>
         </div>
       `;
       return;
     }
     
-    container.innerHTML = topErrorWords.map(word => `
+    container.innerHTML = topErrorWords.map(word => {
+      const totalCount = (word.correctCount || 0) + (word.errorCount || 0);
+      const accuracy = totalCount > 0 ? Math.round((word.correctCount || 0) / totalCount * 100) : 0;
+      return `
       <div class="word-item" onclick="app.viewWordDetail('${word.id}')">
         <div class="word-info">
           <div class="word-text">${word.word}</div>
           <div class="word-translation">${word.translation}</div>
         </div>
         <div class="word-meta">
-          <span class="error-badge zero">${word.correctCount || 0} 次正确</span>
+          <span class="error-badge zero">正确率 ${accuracy}%</span>
           <span class="error-badge">${word.errorCount} 次错误</span>
         </div>
       </div>
-    `).join('');
+    `}).join('');
   },
 
   // Library
@@ -1056,8 +1121,12 @@ const app = {
 
     let words;
     if (mode === 'error') {
-      // High error words - 错误次数>=3的单词
-      words = await db.words.filter(w => w.errorCount >= 3).toArray();
+      // High error words - 属于 high-error 单词本的单词
+      const allWords = await db.words.toArray();
+      words = allWords.filter(w => {
+        const bookIds = w.bookIds || [];
+        return bookIds.includes('high-error');
+      });
       if (words.length === 0) {
         this.showToast('没有高频错词，先去练习吧！', 'error');
         return;
@@ -1247,15 +1316,43 @@ const app = {
     }
     
     // Check if should add to high error book
-    const updatedWord = await db.words.get(word.id);
-    if (updatedWord.errorCount >= 3) {
-      // 将 high-error 添加到单词的 bookIds 中（如果不存在）
-      const currentBookIds = updatedWord.bookIds || [];
-      if (!currentBookIds.includes('high-error')) {
-        await db.words.update(word.id, {
-          bookIds: [...currentBookIds, 'high-error']
-        });
-      }
+    await this.checkAndUpdateHighErrorStatus(word.id);
+  },
+
+  // 检查并更新高频错词状态
+  async checkAndUpdateHighErrorStatus(wordId) {
+    const updatedWord = await db.words.get(wordId);
+    if (!updatedWord) return;
+
+    // 加载高频错词设置
+    const settings = await this.loadHighErrorSettings();
+    const { minPracticeCount, accuracyThreshold, errorCountThreshold } = settings;
+
+    // 计算总练习次数
+    const totalPracticeCount = (updatedWord.correctCount || 0) + (updatedWord.errorCount || 0);
+    
+    // 如果练习次数不足，不判断为高频错词
+    if (totalPracticeCount < minPracticeCount) return;
+
+    // 计算正确率
+    const accuracy = ((updatedWord.correctCount || 0) / totalPracticeCount) * 100;
+
+    // 判断是否满足高频错词条件：正确率低于阈值 且 错误次数达到阈值
+    const isHighError = accuracy < accuracyThreshold && updatedWord.errorCount >= errorCountThreshold;
+
+    const currentBookIds = updatedWord.bookIds || [];
+    const isInHighErrorBook = currentBookIds.includes('high-error');
+
+    if (isHighError && !isInHighErrorBook) {
+      // 添加高频错词标记
+      await db.words.update(wordId, {
+        bookIds: [...currentBookIds, 'high-error']
+      });
+    } else if (!isHighError && isInHighErrorBook) {
+      // 移除高频错词标记（如果正确率恢复）
+      await db.words.update(wordId, {
+        bookIds: currentBookIds.filter(id => id !== 'high-error')
+      });
     }
   },
 
@@ -1428,6 +1525,13 @@ const app = {
   // 关闭练习完成弹窗
   closePracticeCompleteModal() {
     document.getElementById('practice-complete-modal').classList.remove('active');
+  },
+
+  // 跳过保存成绩
+  skipPracticeScore() {
+    this.closePracticeCompleteModal();
+    this.endPractice();
+    this.showToast('练习已结束', 'info');
   },
 
   endPractice() {
@@ -1780,6 +1884,8 @@ const app = {
     
     await db.words.clear();
     await db.books.clear();
+    await db.practiceScores.clear();
+    await db.dailyPracticeSessions.clear();
     await this.initDatabase();
     await this.loadBooks();
     await this.loadWords();
@@ -1788,6 +1894,7 @@ const app = {
     this.renderRecentWords();
     this.renderBookTabs();
     this.renderLibrary();
+    this.renderStats();
     
     this.showToast('所有数据已清除', 'success');
   },
@@ -1819,6 +1926,43 @@ const app = {
       [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
     }
     return newArray;
+  },
+
+  // 高频错词设置 - 更新显示值
+  updateHighErrorSettingDisplay(inputId, displayId, suffix) {
+    const input = document.getElementById(inputId);
+    const display = document.getElementById(displayId);
+    if (input && display) {
+      display.textContent = input.value + suffix;
+    }
+  },
+
+  // 高频错词设置 - 加载设置到页面
+  async loadHighErrorSettingsToPage() {
+    const settings = await this.loadHighErrorSettings();
+    
+    // 设置滑块值
+    document.getElementById('min-practice-count').value = settings.minPracticeCount;
+    document.getElementById('accuracy-threshold').value = settings.accuracyThreshold;
+    document.getElementById('error-count-threshold').value = settings.errorCountThreshold;
+    
+    // 更新显示值
+    this.updateHighErrorSettingDisplay('min-practice-count', 'min-practice-display', ' 次');
+    this.updateHighErrorSettingDisplay('accuracy-threshold', 'accuracy-threshold-display', '%');
+    this.updateHighErrorSettingDisplay('error-count-threshold', 'error-count-display', ' 次');
+  },
+
+  // 高频错词设置 - 保存设置
+  async saveHighErrorSettings() {
+    const minPracticeCount = parseInt(document.getElementById('min-practice-count').value);
+    const accuracyThreshold = parseInt(document.getElementById('accuracy-threshold').value);
+    const errorCountThreshold = parseInt(document.getElementById('error-count-threshold').value);
+    
+    await this.saveHighErrorSetting('minPracticeCount', minPracticeCount);
+    await this.saveHighErrorSetting('accuracyThreshold', accuracyThreshold);
+    await this.saveHighErrorSetting('errorCountThreshold', errorCountThreshold);
+    
+    this.showToast('高频错词设置已保存', 'success');
   },
 
   setupEventListeners() {
