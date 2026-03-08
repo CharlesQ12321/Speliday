@@ -5,8 +5,8 @@
 
 // Database Setup
 const db = new Dexie('SnapWordsDB');
-db.version(5).stores({
-  words: '++id, word, translation, *bookIds, errorCount, correctCount, createdAt, lastPracticed',
+db.version(6).stores({
+  words: '++id, word, translation, *bookIds, errorCount, correctCount, isReported, createdAt, lastPracticed',
   books: '++id, bookId, bookName, createdAt',
   settings: 'key, value',
   practiceScores: '++id, playerName, totalScore, wordCount, correctCount, createdAt',
@@ -76,6 +76,16 @@ const app = {
       await db.books.add({
         bookId: 'high-error',
         bookName: '高频错词本',
+        createdAt: Date.now()
+      });
+    }
+
+    // Create reported words book if not exists
+    const reportedBook = await db.books.get({ bookId: 'reported' });
+    if (!reportedBook) {
+      await db.books.add({
+        bookId: 'reported',
+        bookName: '报错单词本',
         createdAt: Date.now()
       });
     }
@@ -362,13 +372,16 @@ const app = {
       return;
     }
     
-    container.innerHTML = words.map(word => `
-      <div class="word-item">
+    container.innerHTML = words.map(word => {
+      const isReported = word.isReported || (word.bookIds && word.bookIds.includes('reported'));
+      return `
+      <div class="word-item ${isReported ? 'reported' : ''}">
         <div class="word-info">
           <div class="word-text">${word.word}</div>
           <div class="word-translation">${word.translation}</div>
         </div>
         <div class="word-meta">
+          ${isReported ? `<button class="table-btn" onclick="app.unreportWord(${word.id}, event)" title="取消报错" style="background: rgba(239, 68, 68, 0.1); color: var(--error);">⚠️</button>` : ''}
           <span class="error-badge zero">
             ${word.correctCount || 0} 次正确
           </span>
@@ -379,7 +392,7 @@ const app = {
           <button class="table-btn" onclick="app.deleteWord(${word.id}, event)" title="删除">🗑️</button>
         </div>
       </div>
-    `).join('');
+    `}).join('');
   },
 
   async renderLibrary() {
@@ -436,13 +449,16 @@ const app = {
       return;
     }
     
-    container.innerHTML = words.map(word => `
-      <div class="word-item">
+    container.innerHTML = words.map(word => {
+      const isReported = word.isReported || (word.bookIds && word.bookIds.includes('reported'));
+      return `
+      <div class="word-item ${isReported ? 'reported' : ''}">
         <div class="word-info">
           <div class="word-text">${word.word}</div>
           <div class="word-translation">${word.translation}</div>
         </div>
         <div class="word-meta">
+          ${isReported ? `<button class="table-btn" onclick="app.unreportWord(${word.id}, event)" title="取消报错" style="background: rgba(239, 68, 68, 0.1); color: var(--error);">⚠️</button>` : ''}
           <span class="error-badge zero">
             ${word.correctCount || 0} 次正确
           </span>
@@ -453,7 +469,7 @@ const app = {
           <button class="table-btn" onclick="app.deleteWord(${word.id}, event)" title="删除">🗑️</button>
         </div>
       </div>
-    `).join('');
+    `}).join('');
   },
 
   async deleteWord(id, event) {
@@ -543,6 +559,248 @@ const app = {
     input.value = '';
   },
 
+  // Home Page TXT Upload
+  async handleHomeTxtSelect(input) {
+    const file = input.files[0];
+    if (!file) return;
+    
+    // 检查文件类型
+    if (!file.name.endsWith('.txt')) {
+      this.showToast('请选择TXT格式的文件', 'error');
+      input.value = '';
+      return;
+    }
+    
+    // 检查文件大小（最大1MB）
+    if (file.size > 1024 * 1024) {
+      this.showToast('文件大小超过1MB限制', 'error');
+      input.value = '';
+      return;
+    }
+    
+    await this.processTxtFile(file);
+    
+    // 清空 input，允许重复选择同一文件
+    input.value = '';
+  },
+
+  // Process TXT File
+  async processTxtFile(file) {
+    this.showLoading('正在读取文件...');
+    
+    try {
+      const text = await this.readTxtFile(file);
+      
+      if (!text || text.trim().length === 0) {
+        this.hideLoading();
+        this.showToast('文件内容为空', 'error');
+        return;
+      }
+      
+      this.hideLoading();
+      this.showLoading('正在AI识别单词...');
+      
+      // 调用大模型识别文本中的单词
+      const results = await this.recognizeWordsFromText(text);
+      
+      if (results.length === 0) {
+        this.hideLoading();
+        this.showToast('未能识别到有效的单词', 'error');
+        return;
+      }
+      
+      state.recognitionResults = results;
+      
+      // 打开相机模态框（复用图片识别的结果展示界面）
+      document.getElementById('camera-modal').classList.add('active');
+      document.getElementById('camera-step-1').style.display = 'none';
+      document.getElementById('camera-step-2').style.display = 'block';
+      document.getElementById('camera-footer').style.display = 'flex';
+      
+      // 隐藏图片预览和裁剪相关元素
+      document.getElementById('preview-container').style.display = 'none';
+      document.getElementById('confirm-area-btn').style.display = 'none';
+      
+      // 显示识别结果状态
+      document.getElementById('recognition-status').style.display = 'block';
+      document.getElementById('recognized-count').textContent = results.length;
+      
+      // 渲染识别结果
+      this.renderRecognitionResults();
+      
+      this.hideLoading();
+      this.showToast(`成功识别 ${results.length} 个单词`, 'success');
+    } catch (error) {
+      this.hideLoading();
+      this.showToast('文件处理失败: ' + error.message, 'error');
+      console.error(error);
+    }
+  },
+
+  // Read TXT File
+  readTxtFile(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target.result);
+      reader.onerror = (e) => reject(new Error('文件读取失败'));
+      reader.readAsText(file, 'UTF-8');
+    });
+  },
+
+  // Recognize Words from Text using AI
+  async recognizeWordsFromText(text) {
+    const { provider, key, url } = state.apiSettings;
+    
+    if (!key) {
+      // Demo mode - return mock data
+      return this.getMockRecognitionResults();
+    }
+    
+    const prompt = `请从以下文本中提取所有英文单词和对应的中文释义。以JSON格式返回，格式如下：
+[
+  {"word": "apple", "translation": "n. 苹果"},
+  {"word": "run", "translation": "v. 跑，奔跑"},
+  {"word": "beautiful", "translation": "adj. 美丽的，漂亮的"}
+]
+要求：
+1. 只返回JSON数组，不要其他文字
+2. word字段只包含纯英文字母，不要包含数字、标点或特殊符号
+3. translation字段必须包含词性标注（如n., v., adj., adv., prep., conj., pron., art., num., interj.等），格式为"词性. 中文释义"
+4. 确保每个单词都准确识别
+5. 如果文本中有重复单词，只保留一个
+
+文本内容：
+${text}`;
+
+    let response;
+    
+    if (provider === 'openai') {
+      response = await fetch(url || 'https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${key}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o',
+          messages: [
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          max_tokens: 2000
+        })
+      });
+    } else if (provider === 'gemini') {
+      response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${key}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: prompt }
+            ]
+          }]
+        })
+      });
+    } else if (provider === 'glm') {
+      // GLM-4.6V-Flash API (免费版本)
+      response = await fetch(url || 'https://open.bigmodel.cn/api/paas/v4/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${key}`
+        },
+        body: JSON.stringify({
+          model: 'glm-4-flash',
+          messages: [
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          max_tokens: 2000
+        })
+      });
+    } else if (provider === 'glm4v') {
+      // GLM-4V 标准版
+      response = await fetch(url || 'https://open.bigmodel.cn/api/paas/v4/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${key}`
+        },
+        body: JSON.stringify({
+          model: 'glm-4',
+          messages: [
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          max_tokens: 2000
+        })
+      });
+    } else {
+      throw new Error('不支持的API提供商');
+    }
+    
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error('API Error:', errorData);
+      throw new Error(`API请求失败: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    let content;
+    
+    if (provider === 'openai' || provider === 'glm' || provider === 'glm4v') {
+      content = data.choices[0].message.content;
+    } else {
+      content = data.candidates[0].content.parts[0].text;
+    }
+    
+    // Extract JSON from response
+    const jsonMatch = content.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      try {
+        const results = JSON.parse(jsonMatch[0]);
+        // Validate and clean results
+        if (Array.isArray(results) && results.length > 0) {
+          return results
+            .map(item => ({
+              word: this.cleanWord(item.word),
+              translation: item.translation || ''
+            }))
+            .filter(item => item.word && item.translation);
+        }
+      } catch (e) {
+        console.error('JSON parse error:', e);
+      }
+    }
+    
+    // If no valid JSON found, try to parse line by line
+    const lines = content.split('\n').filter(line => line.trim());
+    const results = [];
+    for (const line of lines) {
+      const match = line.match(/["']?word["']?\s*[:=]\s*["']([^"']+)["']/i);
+      const transMatch = line.match(/["']?translation["']?\s*[:=]\s*["']([^"']+)["']/i);
+      if (match && transMatch) {
+        const cleanedWord = this.cleanWord(match[1]);
+        if (cleanedWord && transMatch[1]) {
+          results.push({ word: cleanedWord, translation: transMatch[1] });
+        }
+      }
+    }
+    
+    if (results.length > 0) {
+      return results;
+    }
+    
+    throw new Error('无法解析识别结果，请重试或手动输入');
+  },
+
   // Camera & AI Recognition
   openCamera() {
     document.getElementById('camera-modal').classList.add('active');
@@ -561,7 +819,13 @@ const app = {
     document.getElementById('camera-footer').style.display = 'none';
     document.getElementById('camera-input').value = '';
     document.getElementById('crop-overlay').style.display = 'none';
-    document.getElementById('confirm-area-btn').style.display = 'inline-flex';
+    
+    // 恢复可能隐藏的元素（TXT上传时会隐藏这些）
+    const previewContainer = document.getElementById('preview-container');
+    const confirmAreaBtn = document.getElementById('confirm-area-btn');
+    if (previewContainer) previewContainer.style.display = 'block';
+    if (confirmAreaBtn) confirmAreaBtn.style.display = 'inline-flex';
+    
     document.getElementById('recognition-status').style.display = 'none';
     state.recognitionResults = [];
     state.currentImageData = null;
@@ -1266,6 +1530,74 @@ const app = {
     const scoreEl = document.getElementById('practice-current-score');
     if (scoreEl) {
       scoreEl.textContent = state.practiceScore;
+    }
+  },
+
+  // 报错当前单词
+  async reportWord() {
+    const word = state.practiceWords[state.currentPracticeIndex];
+    if (!word) {
+      this.showToast('当前没有单词可报错', 'error');
+      return;
+    }
+
+    // 确认是否报错
+    if (!confirm(`确定要报错单词 "${word.word}" 吗？\n释义：${word.translation}`)) {
+      return;
+    }
+
+    try {
+      // 标记单词为已报错
+      const bookIds = word.bookIds || [];
+      if (!bookIds.includes('reported')) {
+        bookIds.push('reported');
+      }
+
+      await db.words.update(word.id, {
+        bookIds: bookIds,
+        isReported: true
+      });
+
+      this.showToast(`单词 "${word.word}" 已标记为报错`, 'success');
+
+      // 自动进入下一词
+      setTimeout(() => {
+        state.currentPracticeIndex++;
+        this.showNextWord();
+      }, 1000);
+    } catch (error) {
+      console.error('报错失败:', error);
+      this.showToast('报错失败，请重试', 'error');
+    }
+  },
+
+  // 取消报错单词
+  async unreportWord(id, event) {
+    event.stopPropagation();
+    
+    try {
+      const word = await db.words.get(id);
+      if (!word) {
+        this.showToast('单词不存在', 'error');
+        return;
+      }
+
+      // 从 bookIds 中移除 'reported'
+      let bookIds = word.bookIds || [];
+      bookIds = bookIds.filter(bookId => bookId !== 'reported');
+
+      await db.words.update(id, {
+        bookIds: bookIds,
+        isReported: false
+      });
+
+      this.showToast(`单词 "${word.word}" 已取消报错`, 'success');
+      
+      // 刷新词库显示
+      await this.renderLibrary();
+    } catch (error) {
+      console.error('取消报错失败:', error);
+      this.showToast('取消报错失败，请重试', 'error');
     }
   },
 

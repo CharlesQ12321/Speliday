@@ -1208,6 +1208,26 @@
     .firework-particle {
       will-change: transform, opacity;
     }
+
+    /* Reported word styling */
+    .word-item.reported {
+      background: rgba(239, 68, 68, 0.1);
+      border-color: rgba(239, 68, 68, 0.3);
+    }
+
+    .word-item.reported:hover {
+      background: rgba(239, 68, 68, 0.15);
+      border-color: rgba(239, 68, 68, 0.5);
+    }
+
+    .reported-badge {
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--error);
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+    }
   </style>
 </head>
 <body>
@@ -1251,6 +1271,14 @@
           <div class="primary-action-subtext">选择本地图片，AI智能识别单词</div>
         </div>
         <input type="file" id="home-image-input" accept="image/*" class="hidden" onchange="app.handleHomeImageSelect(this)">
+
+        <!-- TXT Upload Action -->
+        <div class="primary-action" onclick="document.getElementById('home-txt-input').click()" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); margin-top: 12px;">
+          <div class="primary-action-icon">📄</div>
+          <div class="primary-action-text">上传TXT文档识别</div>
+          <div class="primary-action-subtext">选择本地TXT文件，AI智能识别单词和释义</div>
+        </div>
+        <input type="file" id="home-txt-input" accept=".txt" class="hidden" onchange="app.handleHomeTxtSelect(this)">
 
         <!-- 高频错词 -->
         <div class="section-title">
@@ -1372,13 +1400,16 @@
                    spellcheck="false"
                    onkeypress="if(event.key==='Enter'){event.preventDefault();document.getElementById('practice-check-btn').click();}">
 
-            <!-- 按钮区域：退出和检查按钮并排 -->
-            <div style="margin-top: 16px; display: flex; gap: 12px; width: 100%; max-width: 300px;">
+            <!-- 按钮区域：检查、报错、退出按钮并排 -->
+            <div style="margin-top: 16px; display: flex; gap: 8px; width: 100%; max-width: 360px;">
               <button class="btn btn-primary" id="practice-check-btn" onclick="app.checkAnswer()" style="flex: 1;">
-                检查
+                <i class="fa fa-check"></i> 检查
               </button>
-              <button class="btn btn-primary" onclick="app.exitPractice()" style="flex: 1;">
-                <i class="fa fa-arrow-left"></i> 退出
+              <button class="btn btn-warning" id="practice-report-btn" onclick="app.reportWord()" style="flex: 1; background: var(--warning); color: white; border: none;">
+                <i class="fa fa-exclamation-triangle"></i> 报错
+              </button>
+              <button class="btn btn-secondary" onclick="app.exitPractice()" style="flex: 1;">
+                <i class="fa fa-sign-out"></i> 退出
               </button>
             </div>
 
