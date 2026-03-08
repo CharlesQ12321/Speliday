@@ -1810,6 +1810,31 @@
       </div>
     </div>
 
+    <!-- Edit Word Modal -->
+    <div class="modal-overlay" id="edit-word-modal">
+      <div class="modal" style="max-width: 400px;">
+        <div class="modal-header">
+          <div class="modal-title">修改单词</div>
+          <button class="modal-close" onclick="app.closeEditWordModal()">×</button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="edit-word-id">
+          <div class="input-group">
+            <label class="input-label">英文单词</label>
+            <input type="text" class="input" id="edit-word-text" placeholder="输入英文单词">
+          </div>
+          <div class="input-group">
+            <label class="input-label">中文释义</label>
+            <input type="text" class="input" id="edit-word-translation" placeholder="输入中文释义">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="app.closeEditWordModal()">取消</button>
+          <button class="btn btn-primary" onclick="app.saveEditWord()">保存</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Loading Overlay -->
     <div class="loading-overlay" id="loading-overlay" style="display: none;">
       <div class="spinner"></div>

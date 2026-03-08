@@ -375,7 +375,8 @@ const app = {
           <span class="error-badge ${word.errorCount === 0 ? 'zero' : ''}">
             ${word.errorCount} 次错误
           </span>
-          <button class="table-btn" onclick="app.deleteWord(${word.id}, event)">🗑️</button>
+          <button class="table-btn" onclick="app.editWord(${word.id}, event)" title="修改">✏️</button>
+          <button class="table-btn" onclick="app.deleteWord(${word.id}, event)" title="删除">🗑️</button>
         </div>
       </div>
     `).join('');
@@ -448,7 +449,8 @@ const app = {
           <span class="error-badge ${word.errorCount === 0 ? 'zero' : ''}">
             ${word.errorCount} 次错误
           </span>
-          <button class="table-btn" onclick="app.deleteWord(${word.id}, event)">🗑️</button>
+          <button class="table-btn" onclick="app.editWord(${word.id}, event)" title="修改">✏️</button>
+          <button class="table-btn" onclick="app.deleteWord(${word.id}, event)" title="删除">🗑️</button>
         </div>
       </div>
     `).join('');
@@ -457,12 +459,62 @@ const app = {
   async deleteWord(id, event) {
     event.stopPropagation();
     if (!confirm('确定要删除这个单词吗？')) return;
-    
+
     await db.words.delete(id);
     await this.loadWords();
     await this.renderLibrary();
     this.updateStats();
     this.showToast('单词已删除', 'success');
+  },
+
+  // Edit Word
+  async editWord(id, event) {
+    event.stopPropagation();
+    const word = await db.words.get(id);
+    if (!word) {
+      this.showToast('单词不存在', 'error');
+      return;
+    }
+
+    document.getElementById('edit-word-id').value = id;
+    document.getElementById('edit-word-text').value = word.word;
+    document.getElementById('edit-word-translation').value = word.translation;
+    document.getElementById('edit-word-modal').classList.add('active');
+  },
+
+  closeEditWordModal() {
+    document.getElementById('edit-word-modal').classList.remove('active');
+    document.getElementById('edit-word-id').value = '';
+    document.getElementById('edit-word-text').value = '';
+    document.getElementById('edit-word-translation').value = '';
+  },
+
+  async saveEditWord() {
+    const id = parseInt(document.getElementById('edit-word-id').value);
+    const wordText = document.getElementById('edit-word-text').value.trim();
+    const translation = document.getElementById('edit-word-translation').value.trim();
+
+    if (!wordText || !translation) {
+      this.showToast('请填写完整的单词信息', 'error');
+      return;
+    }
+
+    // 检查是否有其他单词使用相同的单词文本
+    const existing = await db.words.get({ word: wordText });
+    if (existing && existing.id !== id) {
+      this.showToast('该单词已存在', 'error');
+      return;
+    }
+
+    await db.words.update(id, {
+      word: wordText,
+      translation: translation
+    });
+
+    this.closeEditWordModal();
+    await this.loadWords();
+    await this.renderLibrary();
+    this.showToast('单词已更新', 'success');
   },
 
   // Image Source Selection
