@@ -1126,11 +1126,11 @@ ${text}`;
     });
   },
 
-  // 清理单词，只保留英文字母
+  // 清理单词，保留英文字母和连词符号
   cleanWord(word) {
     if (!word || typeof word !== 'string') return '';
-    // 只保留英文字母，去除数字、标点、特殊符号等
-    return word.replace(/[^a-zA-Z]/g, '').toLowerCase();
+    // 保留英文字母和连词符号"-"，去除数字、标点、其他特殊符号等
+    return word.replace(/[^a-zA-Z-]/g, '').toLowerCase();
   },
 
   async recognizeWords(base64Image) {
