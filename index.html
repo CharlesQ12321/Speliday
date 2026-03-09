@@ -1302,29 +1302,42 @@
         </div>
         
         <!-- Filter Dropdowns -->
-        <div style="margin-bottom: 16px;">
-          <div style="display: flex; gap: 10px;">
-            <div style="flex: 1;">
-              <select id="filter-book" class="select" onchange="app.filterLibrary()">
-                <option value="all">全部单词本</option>
-              </select>
-            </div>
-            <div style="flex: 1;">
-              <select id="filter-error-count" class="select" onchange="app.filterLibrary()">
-                <option value="all">全部错误次数</option>
-                <option value="0">0次错误</option>
-                <option value="1-2">1-2次错误</option>
-                <option value="3-5">3-5次错误</option>
-                <option value="5+">5次以上</option>
-              </select>
-            </div>
+        <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+          <div style="flex: 1;">
+            <select id="filter-book" class="select" onchange="app.filterLibrary()">
+              <option value="all">全部单词本</option>
+            </select>
+          </div>
+          <div style="flex: 1;">
+            <select id="filter-error-count" class="select" onchange="app.filterLibrary()">
+              <option value="all">全部错误次数</option>
+              <option value="0">0次错误</option>
+              <option value="1-2">1-2次错误</option>
+              <option value="3-5">3-5次错误</option>
+              <option value="5+">5次以上</option>
+            </select>
           </div>
         </div>
 
-        <!-- Search -->
-        <div class="search-box">
-          <i class="fa fa-search search-icon"></i>
-          <input type="text" class="search-input" id="word-search" placeholder="搜索单词..." oninput="app.searchWords(this.value)">
+        <!-- Search and Add Book -->
+        <div style="display: flex; gap: 10px; margin-bottom: 14px;">
+          <div style="flex: 1; position: relative;">
+            <i class="fa fa-search search-icon" style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 16px; color: var(--text-muted);"></i>
+            <input type="text" class="input" id="word-search" placeholder="搜索单词..." oninput="app.searchWords(this.value)" style="padding-left: 42px;">
+          </div>
+          <div style="flex: 1; display: flex; gap: 10px;">
+            <div style="flex: 1; position: relative;">
+              <input type="text" class="input" id="new-book-input" placeholder="输入或选择单词本" style="width: 100%;" list="book-datalist">
+              <datalist id="book-datalist">
+              </datalist>
+            </div>
+            <button class="btn btn-primary" onclick="app.createBookFromInput()" style="width: 40px; padding: 0; display: flex; align-items: center; justify-content: center;">
+              <i class="fa fa-plus"></i>
+            </button>
+            <button class="btn btn-primary" onclick="app.deleteBookFromInput()" style="width: 40px; padding: 0; display: flex; align-items: center; justify-content: center;">
+              <i class="fa fa-minus"></i>
+            </button>
+          </div>
         </div>
 
         <!-- Word List -->

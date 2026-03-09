@@ -172,6 +172,8 @@ const app = {
   async loadBooks() {
     state.books = await db.books.toArray();
     this.updateBookSelects();
+    this.updateBookDatalist();
+    this.updateFilterBookSelect();
   },
 
   async loadWords() {
@@ -319,8 +321,10 @@ const app = {
     const select = document.getElementById('filter-book');
     if (!select) return;
     
-    // 保留第一个选项"全部单词本"
+    // 保留当前选中的值
     const currentValue = select.value;
+    
+    // 重建选项列表
     select.innerHTML = '<option value="all">全部单词本</option>';
     
     state.books.forEach(book => {
@@ -330,7 +334,16 @@ const app = {
       select.appendChild(option);
     });
     
-    select.value = currentValue || 'all';
+    // 检查之前选中的值是否仍然存在于新的选项列表中
+    const optionExists = Array.from(select.options).some(opt => opt.value === currentValue);
+    if (optionExists && currentValue !== 'all') {
+      select.value = currentValue;
+    } else {
+      select.value = 'all';
+    }
+    
+    // 强制触发change事件以确保UI更新
+    select.dispatchEvent(new Event('change'));
   },
 
   async filterLibrary() {
@@ -2229,6 +2242,99 @@ ${text}`;
     this.renderBookTabs();
     this.updateBookSelects();
     this.showToast('单词本创建成功', 'success');
+  },
+
+  async createBookFromInput() {
+    const name = document.getElementById('new-book-input').value.trim();
+    if (!name) {
+      this.showToast('请输入单词本名称', 'error');
+      return;
+    }
+    
+    // 检查是否已存在同名单词本
+    const existingBook = state.books.find(b => b.bookName === name);
+    if (existingBook) {
+      this.showToast('该单词本已存在', 'error');
+      return;
+    }
+    
+    const bookId = 'book_' + Date.now();
+    await db.books.add({
+      bookId,
+      bookName: name,
+      createdAt: Date.now()
+    });
+    
+    document.getElementById('new-book-input').value = '';
+    await this.loadBooks();
+    await this.renderBookList();
+    this.renderBookTabs();
+    this.updateBookSelects();
+    this.updateFilterBookSelect();
+    this.updateBookDatalist();
+    this.showToast('单词本创建成功', 'success');
+  },
+
+  updateBookDatalist() {
+    const datalist = document.getElementById('book-datalist');
+    if (!datalist) return;
+    
+    datalist.innerHTML = state.books.map(book => 
+      `<option value="${book.bookName}">`
+    ).join('');
+  },
+
+  async deleteBookFromInput() {
+    const name = document.getElementById('new-book-input').value.trim();
+    if (!name) {
+      this.showToast('请输入或选择要删除的单词本名称', 'error');
+      return;
+    }
+    
+    const book = state.books.find(b => b.bookName === name);
+    if (!book) {
+      this.showToast('未找到该单词本', 'error');
+      return;
+    }
+    
+    if (!confirm(`确定要删除单词本"${name}"吗？其中的单词将从该单词本中移除，如果单词不属于任何其他单词本，则会被移至默认单词本。`)) return;
+    
+    // 获取所有单词，处理属于该单词本的单词
+    const allWords = await db.words.toArray();
+    for (const word of allWords) {
+      const bookIds = word.bookIds || [];
+      if (bookIds.includes(book.bookId)) {
+        // 从 bookIds 中移除该单词本
+        const newBookIds = bookIds.filter(id => id !== book.bookId);
+        // 如果移除后没有单词本了，添加到默认单词本
+        if (newBookIds.length === 0) {
+          newBookIds.push('default');
+        }
+        await db.words.update(word.id, { bookIds: newBookIds });
+      }
+    }
+    
+    // Delete book
+    const bookRecord = await db.books.get({ bookId: book.bookId });
+    if (bookRecord) {
+      await db.books.delete(bookRecord.id);
+    }
+    
+    document.getElementById('new-book-input').value = '';
+    await this.loadBooks();
+    
+    // 检查当前筛选的单词本是否是被删除的，如果是则重置为'all'
+    const filterBookSelect = document.getElementById('filter-book');
+    if (filterBookSelect && filterBookSelect.value === book.bookId) {
+      filterBookSelect.value = 'all';
+    }
+    
+    await this.renderBookList();
+    this.renderBookTabs();
+    this.updateBookSelects();
+    this.updateFilterBookSelect();
+    this.updateBookDatalist();
+    this.showToast('单词本删除成功', 'success');
   },
 
   async deleteBook(bookId) {
