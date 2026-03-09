@@ -420,15 +420,15 @@ const app = {
     // 获取当前筛选条件
     const bookFilter = document.getElementById('filter-book').value;
     const errorFilter = document.getElementById('filter-error-count').value;
-    
+
     // 先获取基础单词列表
     let words = await db.words.orderBy('word').toArray();
-    
+
     // 按单词本筛选
     if (bookFilter !== 'all') {
       words = words.filter(word => this.wordBelongsToBook(word, bookFilter));
     }
-    
+
     // 按错误次数筛选
     if (errorFilter !== 'all') {
       words = words.filter(word => {
@@ -442,17 +442,26 @@ const app = {
         }
       });
     }
-    
-    // 再按搜索关键词筛选
+
+    // 再按搜索关键词筛选 - 从首字母开始顺序匹配
     if (query.trim()) {
-      words = words.filter(w => 
-        w.word.toLowerCase().includes(query.toLowerCase()) ||
-        w.translation.includes(query)
-      );
+      const searchQuery = query.toLowerCase().trim();
+      words = words.filter(w => {
+        const wordLower = w.word.toLowerCase();
+        // 检查单词是否以搜索词开头
+        if (wordLower.startsWith(searchQuery)) {
+          return true;
+        }
+        // 检查中文释义是否包含搜索词
+        if (w.translation.includes(query.trim())) {
+          return true;
+        }
+        return false;
+      });
     }
-    
+
     const container = document.getElementById('library-words');
-    
+
     if (words.length === 0) {
       container.innerHTML = `
         <div class="empty-state">
@@ -461,7 +470,7 @@ const app = {
       `;
       return;
     }
-    
+
     container.innerHTML = words.map(word => {
       const isReported = word.isReported || (word.bookIds && word.bookIds.includes('reported'));
       return `
