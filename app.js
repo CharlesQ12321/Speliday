@@ -25,7 +25,7 @@ const state = {
   words: [],
   apiSettings: {
     provider: 'glm',  // 默认使用智谱AI GLM-4.6V-Flash
-    key: '5df4868f29c14aaebb1c1a5112468741.s5pttICchOoYzZqw',  // 内置API Key
+    key: 'd54dc5bab2624d67b0525a82958b7ca9.F5u7mVKLCD5NHQt5',  // 内置API Key
     url: ''
   },
   // Camera and Image Processing
@@ -727,7 +727,7 @@ ${text}`;
         })
       });
     } else if (provider === 'glm') {
-      // GLM-4.6V-Flash API (免费版本)
+      // GLM-4-Flash API (免费版本)
       response = await fetch(url || 'https://open.bigmodel.cn/api/paas/v4/chat/completions', {
         method: 'POST',
         headers: {
@@ -735,7 +735,7 @@ ${text}`;
           'Authorization': `Bearer ${key}`
         },
         body: JSON.stringify({
-          model: 'glm-4-flash',
+          model: 'GLM-4-Flash',
           messages: [
             {
               role: 'user',
@@ -1191,7 +1191,7 @@ ${text}`;
       });
     } else if (provider === 'glm') {
       // GLM-4.6V-Flash API (免费版本)
-      // 文档: https://docs.bigmodel.cn/cn/guide/models/free/glm-4.6v-flash
+      // 文档: https://docs.bigmodel.cn/api-reference/模型-api/对话补全#视觉模型
       response = await fetch(url || 'https://open.bigmodel.cn/api/paas/v4/chat/completions', {
         method: 'POST',
         headers: {
@@ -1199,7 +1199,7 @@ ${text}`;
           'Authorization': `Bearer ${key}`
         },
         body: JSON.stringify({
-          model: 'glm-4.6v-flash',
+          model: 'GLM-4.6V-Flash',
           messages: [
             {
               role: 'user',
@@ -1209,10 +1209,7 @@ ${text}`;
               ]
             }
           ],
-          max_tokens: 2000,
-          thinking: {
-            type: 'enabled'
-          }
+          max_tokens: 2000
         })
       });
     } else if (provider === 'glm4v') {
@@ -1491,11 +1488,97 @@ ${text}`;
     state.totalWordsInPractice = state.practiceWords.length; // 记录总单词数
     state.correctWordsInPractice = 0; // 重置正确数
 
-    // Show practice area
+    // 隐藏设置区域
     document.getElementById('practice-setup').style.display = 'none';
+
+    // 显示练习区域
     document.getElementById('practice-area').style.display = 'block';
 
+    // 先显示第一个单词
     this.showNextWord();
+
+    // 启动倒计时动画（纯视觉效果，不影响单词显示）
+    this.startPracticeCountdown();
+  },
+
+  // 倒数开始仪式 - 纯视觉效果，透明背景叠加在练习内容上
+  startPracticeCountdown() {
+    const countdownEl = document.getElementById('practice-countdown');
+    const numberEl = document.getElementById('practice-countdown-number');
+    const textEl = document.querySelector('.practice-countdown-text');
+
+    // 显示倒数动画层（透明背景，底层内容可见）
+    countdownEl.style.display = 'flex';
+
+    // 倒数数字
+    let count = 3;
+    const countdownTexts = ['准备开始', '集中注意力', '即将开始'];
+
+    const updateCountdown = () => {
+      if (count > 0) {
+        // 更新数字和文字
+        numberEl.textContent = count;
+        textEl.textContent = countdownTexts[3 - count];
+
+        // 重新触发动画
+        numberEl.style.animation = 'none';
+        numberEl.offsetHeight; // 强制重绘
+        numberEl.style.animation = 'practiceCountdownNumberPulse 1s ease-out';
+
+        count--;
+        setTimeout(updateCountdown, 1000);
+      } else {
+        // 显示 "GO!"
+        numberEl.textContent = 'GO!';
+        numberEl.classList.add('go-text');
+        textEl.textContent = '开始拼写！';
+
+        // 延迟后隐藏倒数层
+        setTimeout(() => {
+          countdownEl.style.display = 'none';
+          numberEl.classList.remove('go-text');
+        }, 600);
+      }
+    };
+
+    // 开始倒数
+    updateCountdown();
+  },
+
+  // 创建倒数粒子效果 - 在练习区域内
+  createPracticeCountdownParticles(container, count = 12) {
+    // 获取练习区域的中心位置
+    const practiceArea = document.getElementById('practice-area');
+    const rect = practiceArea.getBoundingClientRect();
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+
+    for (let i = 0; i < count; i++) {
+      const particle = document.createElement('div');
+      particle.className = 'practice-countdown-particle';
+
+      // 随机角度和距离
+      const angle = (360 / count) * i + Math.random() * 30;
+      const distance = 80 + Math.random() * 100;
+      const rad = (angle * Math.PI) / 180;
+
+      const tx = Math.cos(rad) * distance;
+      const ty = Math.sin(rad) * distance;
+
+      particle.style.left = centerX + 'px';
+      particle.style.top = centerY + 'px';
+      particle.style.setProperty('--tx', tx + 'px');
+      particle.style.setProperty('--ty', ty + 'px');
+
+      // 随机颜色
+      const colors = ['#3B82F6', '#60A5FA', '#10B981', '#34D399', '#F59E0B'];
+      particle.style.background = colors[Math.floor(Math.random() * colors.length)];
+
+      container.appendChild(particle);
+
+      // 动画结束后移除
+      setTimeout(() => particle.remove(), 1500);
+    }
   },
 
   showNextWord() {
