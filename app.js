@@ -1380,29 +1380,176 @@ ${text}`;
       }
     }
 
-    // Handle duplicates
-    for (const dup of duplicates) {
-      const action = confirm(`单词 "${dup.word}" 已存在（释义：${dup.existing.translation}）。是否将该单词添加到当前单词本？`);
-      if (action) {
-        // 将新单词本添加到现有单词的 bookIds 中
-        const existingBookIds = dup.existing.bookIds || [];
-        if (!existingBookIds.includes(bookId)) {
-          await db.words.update(dup.existing.id, {
-            translation: dup.translation,
-            bookIds: [...existingBookIds, bookId]
-          });
-        }
-        importedWords.push({
-          id: dup.existing.id,
-          word: dup.word,
+    // Handle duplicates with batch modal
+    if (duplicates.length > 0) {
+      await this.showDuplicateBatchModal(duplicates, bookId, importedWords);
+    } else {
+      // No duplicates, finish import directly
+      this.finishImport(importedWords);
+    }
+  },
+
+  // Show duplicate batch processing modal
+  showDuplicateBatchModal(duplicates, bookId, importedWords) {
+    return new Promise((resolve) => {
+      this.duplicateBatchData = {
+        duplicates,
+        bookId,
+        importedWords,
+        currentIndex: 0,
+        resolve
+      };
+
+      // Update count
+      document.getElementById('duplicate-count').textContent = duplicates.length;
+
+      // Render duplicate list
+      this.renderDuplicateList();
+
+      // Show modal
+      document.getElementById('duplicate-batch-modal').classList.add('active');
+    });
+  },
+
+  // Render duplicate list in modal
+  renderDuplicateList() {
+    const { duplicates } = this.duplicateBatchData;
+    const listContainer = document.getElementById('duplicate-list');
+
+    listContainer.innerHTML = duplicates.map((dup, index) => `
+      <div class="duplicate-item" data-index="${index}" style="
+        padding: 12px;
+        background: var(--bg-primary);
+        border-radius: var(--radius);
+        border: 2px solid var(--border);
+        transition: var(--transition);
+      ">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+          <div>
+            <div style="font-weight: 600; font-size: 16px; color: var(--text-primary);">${dup.word}</div>
+            <div style="font-size: 13px; color: var(--text-secondary); margin-top: 2px;">
+              现有释义: ${dup.existing.translation}
+            </div>
+            <div style="font-size: 13px; color: var(--primary); margin-top: 2px;">
+              新释义: ${dup.translation}
+            </div>
+          </div>
+          <span class="duplicate-status" data-index="${index}" style="
+            font-size: 12px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+          ">待处理</span>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-sm btn-primary" onclick="app.handleDuplicateItem(${index}, 'replace')" style="flex: 1; padding: 6px 12px; font-size: 13px;">
+            替换
+          </button>
+          <button class="btn btn-sm btn-secondary" onclick="app.handleDuplicateItem(${index}, 'skip')" style="flex: 1; padding: 6px 12px; font-size: 13px;">
+            跳过
+          </button>
+        </div>
+      </div>
+    `).join('');
+  },
+
+  // Handle individual duplicate item action
+  async handleDuplicateItem(index, action) {
+    const { duplicates, bookId, importedWords } = this.duplicateBatchData;
+    const dup = duplicates[index];
+
+    // Update UI for this item
+    const itemEl = document.querySelector(`.duplicate-item[data-index="${index}"]`);
+    const statusEl = document.querySelector(`.duplicate-status[data-index="${index}"]`);
+
+    if (action === 'replace') {
+      // Replace: update existing word
+      const existingBookIds = dup.existing.bookIds || [];
+      if (!existingBookIds.includes(bookId)) {
+        await db.words.update(dup.existing.id, {
           translation: dup.translation,
-          bookIds: [...existingBookIds, bookId],
-          errorCount: dup.existing.errorCount || 0,
-          correctCount: dup.existing.correctCount || 0
+          bookIds: [...existingBookIds, bookId]
         });
+      }
+      importedWords.push({
+        id: dup.existing.id,
+        word: dup.word,
+        translation: dup.translation,
+        bookIds: [...existingBookIds, bookId],
+        errorCount: dup.existing.errorCount || 0,
+        correctCount: dup.existing.correctCount || 0
+      });
+
+      itemEl.style.borderColor = 'var(--success)';
+      itemEl.style.opacity = '0.7';
+      statusEl.textContent = '已替换';
+      statusEl.style.background = 'var(--success)';
+      statusEl.style.color = '#fff';
+    } else {
+      // Skip: add existing word to practice list
+      importedWords.push({
+        id: dup.existing.id,
+        word: dup.existing.word,
+        translation: dup.existing.translation,
+        bookIds: dup.existing.bookIds || [],
+        errorCount: dup.existing.errorCount || 0,
+        correctCount: dup.existing.correctCount || 0
+      });
+      
+      itemEl.style.borderColor = 'var(--text-tertiary)';
+      itemEl.style.opacity = '0.5';
+      statusEl.textContent = '已跳过';
+      statusEl.style.background = 'var(--text-tertiary)';
+      statusEl.style.color = '#fff';
+    }
+
+    // Disable buttons for this item
+    const buttons = itemEl.querySelectorAll('button');
+    buttons.forEach(btn => btn.disabled = true);
+
+    // Check if all items are processed
+    this.duplicateBatchData.currentIndex++;
+    const allProcessed = duplicates.every((_, i) => {
+      const el = document.querySelector(`.duplicate-status[data-index="${i}"]`);
+      return el && el.textContent !== '待处理';
+    });
+
+    if (allProcessed) {
+      this.closeDuplicateBatchModal();
+      this.duplicateBatchData.resolve();
+      this.finishImport(importedWords);
+    }
+  },
+
+  // Apply batch action to all remaining items
+  async applyBatchAction(action) {
+    const { duplicates, bookId, importedWords } = this.duplicateBatchData;
+
+    // Mark that we're doing batch action to prevent double call to finishImport
+    this.duplicateBatchData.isBatchAction = true;
+
+    for (let i = 0; i < duplicates.length; i++) {
+      const statusEl = document.querySelector(`.duplicate-status[data-index="${i}"]`);
+      if (statusEl && statusEl.textContent === '待处理') {
+        await this.handleDuplicateItem(i, action);
       }
     }
 
+    // Batch action completion is handled by the last handleDuplicateItem call
+    // No need to call finishImport here as it's already called when all items are processed
+  },
+
+  // Close duplicate batch modal
+  closeDuplicateBatchModal() {
+    document.getElementById('duplicate-batch-modal').classList.remove('active');
+    if (this.duplicateBatchData && this.duplicateBatchData.resolve) {
+      this.duplicateBatchData.resolve();
+    }
+  },
+
+  // Finish import process
+  async finishImport(importedWords) {
     this.closeCamera();
     await this.loadWords();
     this.updateStats();

@@ -2046,6 +2046,29 @@
       </div>
     </div>
 
+    <!-- Duplicate Words Batch Modal -->
+    <div class="modal-overlay" id="duplicate-batch-modal">
+      <div class="modal" style="max-width: 500px; max-height: 80vh; display: flex; flex-direction: column;">
+        <div class="modal-header">
+          <div class="modal-title">处理重复单词</div>
+          <button class="modal-close" onclick="app.closeDuplicateBatchModal()">×</button>
+        </div>
+        <div id="duplicate-batch-info" style="padding: 16px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); font-size: 14px; flex-shrink: 0;">
+          发现 <span id="duplicate-count" style="font-weight: 600; color: var(--primary);">0</span> 个已存在的单词
+        </div>
+        <div class="modal-body" style="overflow-y: auto; flex: 1; padding-top: 16px;">
+          <div id="duplicate-list" style="display: flex; flex-direction: column; gap: 12px;">
+            <!-- Duplicate items will be inserted here -->
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="app.closeDuplicateBatchModal()">取消导入</button>
+          <button class="btn btn-primary" onclick="app.applyBatchAction('replace')" style="background: var(--primary);">全部替换</button>
+          <button class="btn btn-secondary" onclick="app.applyBatchAction('skip')">全部跳过</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Edit Word Modal -->
     <div class="modal-overlay" id="edit-word-modal">
       <div class="modal" style="max-width: 400px;">
