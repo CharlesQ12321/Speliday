@@ -40,7 +40,17 @@ const state = {
   // 本次练习总单词数
   totalWordsInPractice: 0,
   // 本次练习正确数
-  correctWordsInPractice: 0
+  correctWordsInPractice: 0,
+  // 句子填空练习相关状态
+  sentencePracticeWords: [],
+  sentencePracticeData: [], // 存储AI生成的句子数据 {word, sentence, chineseTranslation, hiddenWord}
+  currentSentenceIndex: 0,
+  sentenceWrongWordsInRound: [],
+  sentenceConsecutiveCorrectCount: 0,
+  sentencePracticeScore: 0,
+  sentenceTotalWords: 0,
+  sentenceCorrectWords: 0,
+  sentenceHintUsed: false
 };
 
 // Initialize App
@@ -181,17 +191,17 @@ const app = {
   },
 
   updateBookSelects() {
-    const selects = ['target-book', 'practice-book-select'];
+    const selects = ['target-book', 'practice-book-select', 'sentence-practice-book-select'];
     selects.forEach(selectId => {
       const select = document.getElementById(selectId);
       if (!select) return;
-      
+
       // Keep first option for 'all' if it's practice select
       const currentValue = select.value;
-      select.innerHTML = selectId === 'practice-book-select' 
+      select.innerHTML = (selectId === 'practice-book-select' || selectId === 'sentence-practice-book-select')
         ? '<option value="all">全部单词</option>'
         : '';
-      
+
       state.books.forEach(book => {
         if (book.bookId === 'high-error') return; // Skip high-error book
         const option = document.createElement('option');
@@ -199,7 +209,7 @@ const app = {
         option.textContent = book.bookName;
         select.appendChild(option);
       });
-      
+
       if (currentValue) select.value = currentValue;
     });
   },
@@ -2712,6 +2722,736 @@ ${text}`;
         this.savePracticeScore();
       }
     });
+
+    // 句子填空练习的输入框回车支持
+    document.getElementById('sentence-practice-input')?.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        const btn = document.getElementById('sentence-check-btn');
+        if (btn && !btn.disabled) {
+          btn.click();
+        }
+      }
+    });
+
+    // 句子填空完成弹窗中的姓名输入框也支持回车保存
+    document.getElementById('sentence-player-name-input')?.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        this.saveSentencePracticeScore();
+      }
+    });
+  },
+
+  // ==================== 句子填空练习功能 ====================
+
+  // 直接从练习页面进入句子填空练习（使用当前设置）
+  async startSentencePracticeDirect() {
+    // 获取当前练习页面的设置
+    const bookId = document.getElementById('practice-book-select').value;
+    const count = parseInt(document.getElementById('practice-count').value) || 10;
+
+    // 切换到句子填空练习页面
+    document.querySelectorAll('.page').forEach(p => {
+      p.classList.remove('active');
+    });
+    document.getElementById('page-sentence-practice').classList.add('active');
+
+    // 更新导航状态
+    document.querySelectorAll('.nav-item').forEach(item => {
+      item.classList.remove('active');
+    });
+
+    // 直接开始练习（跳过设置页面）
+    await this.startSentencePracticeWithSettings(bookId, count, 'random');
+  },
+
+  // 使用指定设置开始句子填空练习
+  async startSentencePracticeWithSettings(bookId, count, mode) {
+    let words;
+    if (mode === 'error') {
+      // 高频错词 - 属于 high-error 单词本的单词
+      const allWords = await db.words.toArray();
+      words = allWords.filter(w => {
+        const bookIds = w.bookIds || [];
+        return bookIds.includes('high-error');
+      });
+      if (words.length === 0) {
+        this.showToast('没有高频错词，先去练习吧！', 'error');
+        // 返回练习页面
+        document.querySelectorAll('.page').forEach(p => {
+          p.classList.remove('active');
+        });
+        document.getElementById('page-practice').classList.add('active');
+        return;
+      }
+    } else if (bookId === 'all') {
+      words = await db.words.toArray();
+    } else {
+      // 获取所有单词，然后筛选属于该单词本的
+      words = await db.words.toArray();
+      words = words.filter(word => this.wordBelongsToBook(word, bookId));
+    }
+
+    if (words.length === 0) {
+      this.showToast('所选单词本为空', 'error');
+      // 返回练习页面
+      document.querySelectorAll('.page').forEach(p => {
+        p.classList.remove('active');
+      });
+      document.getElementById('page-practice').classList.add('active');
+      return;
+    }
+
+    // 打乱并限制数量
+    state.sentencePracticeWords = this.shuffleArray(words).slice(0, Math.min(count, words.length));
+    state.currentSentenceIndex = 0;
+    state.sentenceWrongWordsInRound = [];
+    state.sentenceConsecutiveCorrectCount = 0;
+    state.sentencePracticeScore = 0;
+    state.sentenceTotalWords = state.sentencePracticeWords.length;
+    state.sentenceCorrectWords = 0;
+
+    // 显示加载提示
+    this.showLoading('正在生成句子...');
+
+    try {
+      // 为每个单词生成句子
+      state.sentencePracticeData = await this.generateSentencesForWords(state.sentencePracticeWords);
+
+      this.hideLoading();
+
+      // 隐藏设置区域，显示练习区域
+      document.getElementById('sentence-practice-setup').style.display = 'none';
+      document.getElementById('sentence-practice-area').style.display = 'block';
+
+      // 显示第一个单词
+      this.showNextSentence();
+
+      // 启动倒计时动画
+      this.startSentencePracticeCountdown();
+    } catch (error) {
+      this.hideLoading();
+      this.showToast('生成句子失败: ' + error.message, 'error');
+      console.error(error);
+      // 返回练习页面
+      document.querySelectorAll('.page').forEach(p => {
+        p.classList.remove('active');
+      });
+      document.getElementById('page-practice').classList.add('active');
+    }
+  },
+
+  // 打开句子填空练习设置页面（从导航或其他入口使用）
+  startSentencePractice() {
+    // 隐藏所有页面
+    document.querySelectorAll('.page').forEach(p => {
+      p.classList.remove('active');
+    });
+
+    // 显示句子填空练习页面
+    document.getElementById('page-sentence-practice').classList.add('active');
+
+    // 更新导航状态
+    document.querySelectorAll('.nav-item').forEach(item => {
+      item.classList.remove('active');
+    });
+
+    // 重置练习区域显示
+    document.getElementById('sentence-practice-setup').style.display = 'block';
+    document.getElementById('sentence-practice-area').style.display = 'none';
+
+    // 更新单词本选择下拉框
+    this.updateBookSelects();
+  },
+
+  // 开始句子填空练习模式（从设置页面调用）
+  async startSentencePracticeMode(mode) {
+    const bookId = document.getElementById('sentence-practice-book-select').value;
+    const count = parseInt(document.getElementById('sentence-practice-count').value) || 10;
+
+    await this.startSentencePracticeWithSettings(bookId, count, mode);
+  },
+
+  // 为单词列表生成句子
+  async generateSentencesForWords(words) {
+    const results = [];
+
+    // 批量处理，每批最多5个单词，避免API请求过大
+    const batchSize = 5;
+    for (let i = 0; i < words.length; i += batchSize) {
+      const batch = words.slice(i, i + batchSize);
+      const batchResults = await this.generateSentenceBatch(batch);
+      results.push(...batchResults);
+    }
+
+    return results;
+  },
+
+  // 批量生成句子
+  async generateSentenceBatch(words) {
+    const { provider, key, url } = state.apiSettings;
+
+    // 构建单词列表
+    const wordList = words.map(w => `${w.word}: ${w.translation}`).join('\n');
+
+    const prompt = `请为以下每个英文单词生成一个包含该单词的英语短句以及对应的中文解释。
+要求：
+1. 句子要简单易懂，适合英语学习者
+2. 句子长度控制在8-15个单词
+3. **重要：目标单词在句子中必须保持原始形态，不要变形（如run不要变成runs/running/ran，apple不要变成apples）**
+4. 返回JSON数组格式
+
+单词列表：
+${wordList}
+
+返回格式示例：
+[
+  {
+    "word": "apple",
+    "sentence": "I want to eat an apple today.",
+    "chineseTranslation": "我今天想吃一个苹果。",
+    "hiddenWord": "apple"
+  },
+  {
+    "word": "run",
+    "sentence": "I run in the park every morning.",
+    "chineseTranslation": "我每天早上在公园跑步。",
+    "hiddenWord": "run"
+  }
+]
+
+注意：
+- word字段是原始单词（从词库中抽取的形态）
+- sentence字段是完整英文句子
+- chineseTranslation字段是句子的中文翻译
+- **hiddenWord字段必须与原始word字段完全一致，不要变形**
+- 只返回JSON数组，不要其他文字`;
+
+    let response;
+
+    if (provider === 'glm' || provider === 'glm4v') {
+      // 使用GLM-4-Flash API
+      response = await fetch(url || 'https://open.bigmodel.cn/api/paas/v4/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${key}`
+        },
+        body: JSON.stringify({
+          model: 'GLM-4-Flash',
+          messages: [
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          max_tokens: 2000
+        })
+      });
+    } else if (provider === 'openai') {
+      response = await fetch(url || 'https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${key}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          max_tokens: 2000
+        })
+      });
+    } else {
+      // 如果没有API key，使用模拟数据
+      return words.map(w => this.getMockSentenceData(w));
+    }
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error('API Error:', errorData);
+      // 如果API失败，使用模拟数据
+      return words.map(w => this.getMockSentenceData(w));
+    }
+
+    const data = await response.json();
+    let content;
+
+    if (provider === 'openai' || provider === 'glm' || provider === 'glm4v') {
+      content = data.choices[0].message.content;
+    } else {
+      content = data.candidates[0].content.parts[0].text;
+    }
+
+    // 提取JSON
+    const jsonMatch = content.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      try {
+        const results = JSON.parse(jsonMatch[0]);
+        if (Array.isArray(results) && results.length > 0) {
+          // 确保每个结果都有正确的wordId
+          return results.map((item, index) => ({
+            ...item,
+            wordId: words[index]?.id,
+            originalWord: words[index]?.word,
+            originalTranslation: words[index]?.translation
+          }));
+        }
+      } catch (e) {
+        console.error('JSON parse error:', e);
+      }
+    }
+
+    // 如果解析失败，使用模拟数据
+    return words.map(w => this.getMockSentenceData(w));
+  },
+
+  // 获取模拟句子数据（当API不可用时使用）
+  getMockSentenceData(word) {
+    // 根据单词生成简单的模拟句子
+    const mockSentences = {
+      'apple': { sentence: 'I eat an apple every day.', chineseTranslation: '我每天吃一个苹果。', hiddenWord: 'apple' },
+      'book': { sentence: 'She reads a book in the library.', chineseTranslation: '她在图书馆看书。', hiddenWord: 'book' },
+      'run': { sentence: 'He runs fast in the morning.', chineseTranslation: '他早上跑得很快。', hiddenWord: 'runs' },
+      'happy': { sentence: 'The children are happy today.', chineseTranslation: '孩子们今天很开心。', hiddenWord: 'happy' },
+      'water': { sentence: 'Please drink more water.', chineseTranslation: '请多喝水。', hiddenWord: 'water' }
+    };
+
+    const mock = mockSentences[word.word.toLowerCase()] || {
+      sentence: `This is a sentence with the word ${word.word}.`,
+      chineseTranslation: `这是一个包含单词${word.word}的句子。`,
+      hiddenWord: word.word
+    };
+
+    return {
+      word: word.word,
+      wordId: word.id,
+      originalWord: word.word,
+      originalTranslation: word.translation,
+      sentence: mock.sentence,
+      chineseTranslation: mock.chineseTranslation,
+      hiddenWord: mock.hiddenWord
+    };
+  },
+
+  // 句子填空练习倒计时
+  startSentencePracticeCountdown() {
+    const countdownEl = document.getElementById('sentence-practice-countdown');
+    const numberEl = document.getElementById('sentence-countdown-number');
+    const textEl = document.querySelector('#sentence-practice-countdown .practice-countdown-text');
+
+    // 显示倒数动画层
+    countdownEl.style.display = 'flex';
+
+    // 倒数数字
+    let count = 3;
+    const countdownTexts = ['准备开始', '集中注意力', '即将开始'];
+
+    const updateCountdown = () => {
+      if (count > 0) {
+        // 更新数字和文字
+        numberEl.textContent = count;
+        textEl.textContent = countdownTexts[3 - count];
+
+        // 重新触发动画
+        numberEl.style.animation = 'none';
+        numberEl.offsetHeight; // 强制重绘
+        numberEl.style.animation = 'practiceCountdownNumberPulse 1s ease-out';
+
+        count--;
+        setTimeout(updateCountdown, 1000);
+      } else {
+        // 显示 "GO!"
+        numberEl.textContent = 'GO!';
+        numberEl.classList.add('go-text');
+        textEl.textContent = '开始填空！';
+
+        // 延迟后隐藏倒数层
+        setTimeout(() => {
+          countdownEl.style.display = 'none';
+          numberEl.classList.remove('go-text');
+        }, 600);
+      }
+    };
+
+    // 开始倒数
+    updateCountdown();
+  },
+
+  // 显示下一个句子填空
+  showNextSentence() {
+    if (state.currentSentenceIndex >= state.sentencePracticeData.length) {
+      // 一轮结束，检查是否有错误的单词
+      if (state.sentenceWrongWordsInRound.length > 0) {
+        // 有错误单词，将它们加入练习列表再次练习
+        const wrongCount = state.sentenceWrongWordsInRound.length;
+        this.showToast(`本轮有 ${wrongCount} 个单词需要复习`, 'info');
+
+        // 直接使用之前的句子数据，不重新生成
+        this.reuseWrongSentenceData();
+        return;
+      }
+
+      // 没有错误单词，练习真正完成
+      this.showSentencePracticeCompleteModal();
+      return;
+    }
+
+    const data = state.sentencePracticeData[state.currentSentenceIndex];
+    state.sentenceHintUsed = false;
+
+    // 显示中文释义
+    document.getElementById('sentence-chinese-translation').textContent = data.chineseTranslation;
+
+    // 显示英文句子，隐藏目标单词（使用原始单词形态作为占位符提示）
+    const hiddenSentence = this.hideWordInSentence(data.sentence, data.hiddenWord, data.originalWord);
+    document.getElementById('sentence-english').innerHTML = hiddenSentence;
+
+    // 清空输入框并聚焦
+    document.getElementById('sentence-practice-input').value = '';
+    document.getElementById('sentence-practice-input').focus();
+
+    // 更新进度
+    const progress = ((state.currentSentenceIndex) / state.sentencePracticeData.length) * 100;
+    document.getElementById('sentence-practice-progress-fill').style.width = `${progress}%`;
+    document.getElementById('sentence-practice-current').textContent = state.currentSentenceIndex + 1;
+    document.getElementById('sentence-practice-total').textContent = state.sentencePracticeData.length;
+
+    // 更新积分显示
+    this.updateSentenceScoreDisplay();
+
+    // 隐藏反馈
+    const feedback = document.getElementById('sentence-practice-feedback');
+    feedback.classList.remove('show', 'correct', 'incorrect');
+
+    // 重置按钮
+    const btn = document.getElementById('sentence-check-btn');
+    btn.innerHTML = '<i class="fa fa-check"></i> 检查';
+    btn.onclick = () => this.checkSentenceAnswer();
+  },
+
+  // 在句子中隐藏单词，显示为等长的空格占位符
+  hideWordInSentence(sentence, hiddenWord, originalWord) {
+    // 首先尝试精确匹配 hiddenWord
+    let escapedWord = hiddenWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    let regex = new RegExp(`\\b${escapedWord}\\b`, 'gi');
+
+    // 如果找不到，尝试匹配原始单词
+    if (!regex.test(sentence)) {
+      escapedWord = originalWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      regex = new RegExp(`\\b${escapedWord}\\b`, 'gi');
+    }
+
+    // 如果还是找不到，尝试查找包含原始单词的任何形式（作为子串）
+    if (!regex.test(sentence)) {
+      // 尝试在句子中查找包含原始单词的单词（如 attract 匹配 attracts）
+      const wordBoundaryRegex = new RegExp(`\\b${escapedWord}[a-z]*\\b`, 'gi');
+      if (wordBoundaryRegex.test(sentence)) {
+        regex = wordBoundaryRegex;
+      }
+    }
+
+    // 创建与原始单词等长的占位符（每个字母对应一个下划线）
+    const placeholder = ' _ '.repeat(originalWord.length).trim();
+
+    // 用占位符替换单词，确保留出足够的空间
+    return sentence.replace(regex, `<span style="color: var(--primary); font-weight: 700; border-bottom: 2px solid var(--primary); display: inline-block; min-width: ${originalWord.length * 20}px; text-align: center; letter-spacing: 2px;">${placeholder}</span>`);
+  },
+
+  // 直接使用之前的句子数据，不重新生成
+  reuseWrongSentenceData() {
+    // 从错误单词列表中筛选出之前练习过的句子数据
+    const wrongWordIds = state.sentenceWrongWordsInRound.map(w => w.id);
+    const reusedData = state.sentencePracticeData.filter(data =>
+      wrongWordIds.includes(data.wordId)
+    );
+
+    // 如果有未找到的句子数据（理论上不应该发生），使用模拟数据补充
+    const foundIds = reusedData.map(d => d.wordId);
+    const missingWords = state.sentenceWrongWordsInRound.filter(w => !foundIds.includes(w.id));
+
+    if (missingWords.length > 0) {
+      const mockData = missingWords.map(w => this.getMockSentenceData(w));
+      reusedData.push(...mockData);
+    }
+
+    // 打乱顺序并更新状态
+    state.sentencePracticeData = this.shuffleArray([...reusedData]);
+    state.currentSentenceIndex = 0;
+    state.sentenceWrongWordsInRound = [];
+
+    // 短暂延迟后显示下一个
+    setTimeout(() => {
+      this.showNextSentence();
+    }, 1500);
+  },
+
+  // 重新生成错误单词的句子数据（保留用于其他场景）
+  async regenerateWrongSentenceData() {
+    this.showLoading('正在生成新的句子...');
+
+    try {
+      const newData = await this.generateSentencesForWords(state.sentenceWrongWordsInRound);
+      state.sentencePracticeData = this.shuffleArray([...newData]);
+      state.currentSentenceIndex = 0;
+      state.sentenceWrongWordsInRound = [];
+
+      this.hideLoading();
+      this.showNextSentence();
+    } catch (error) {
+      this.hideLoading();
+      this.showToast('生成句子失败，使用默认句子', 'error');
+      // 使用模拟数据继续
+      state.sentencePracticeData = state.sentenceWrongWordsInRound.map(w => this.getMockSentenceData(w));
+      state.currentSentenceIndex = 0;
+      state.sentenceWrongWordsInRound = [];
+      this.showNextSentence();
+    }
+  },
+
+  // 更新句子填空积分显示
+  updateSentenceScoreDisplay() {
+    const scoreEl = document.getElementById('sentence-practice-current-score');
+    if (scoreEl) {
+      scoreEl.textContent = state.sentencePracticeScore;
+    }
+  },
+
+  // 更新积分显示并添加动画
+  updateSentenceScoreDisplayWithAnimation() {
+    const scoreEl = document.getElementById('sentence-practice-current-score');
+    if (scoreEl) {
+      scoreEl.textContent = state.sentencePracticeScore;
+      scoreEl.classList.add('score-updated');
+      setTimeout(() => {
+        scoreEl.classList.remove('score-updated');
+      }, 500);
+    }
+  },
+
+  // 显示提示
+  showSentenceHint() {
+    if (state.sentenceHintUsed) {
+      this.showToast('已经使用过提示了', 'info');
+      return;
+    }
+
+    const data = state.sentencePracticeData[state.currentSentenceIndex];
+    if (!data) return;
+
+    // 显示单词的前几个字母作为提示
+    const hint = data.hiddenWord.substring(0, Math.ceil(data.hiddenWord.length / 2));
+    document.getElementById('sentence-practice-input').value = hint;
+    document.getElementById('sentence-practice-input').focus();
+
+    state.sentenceHintUsed = true;
+    this.showToast(`提示: 单词以 "${hint}" 开头`, 'info');
+  },
+
+  // 检查句子填空答案
+  async checkSentenceAnswer() {
+    const input = document.getElementById('sentence-practice-input').value.trim().toLowerCase();
+    const data = state.sentencePracticeData[state.currentSentenceIndex];
+    const feedback = document.getElementById('sentence-practice-feedback');
+    const btn = document.getElementById('sentence-check-btn');
+
+    if (!input) {
+      this.showToast('请输入单词', 'error');
+      return;
+    }
+
+    // 检查答案（比较输入和原始单词，不区分大小写）
+    // 用户需要输入词库中的原始单词形态
+    const isCorrect = input === data.originalWord.toLowerCase();
+
+    if (isCorrect) {
+      // 增加连续正确计数
+      state.sentenceConsecutiveCorrectCount++;
+
+      // 计算本次得分：第1次1分，每次+1分，最高5分；如果使用提示则只得1分
+      let pointsEarned;
+      if (state.sentenceHintUsed) {
+        pointsEarned = 1;
+      } else {
+        pointsEarned = Math.min(state.sentenceConsecutiveCorrectCount, 5);
+      }
+      state.sentencePracticeScore += pointsEarned;
+      state.sentenceCorrectWords++;
+
+      // 更新积分显示并添加动画
+      this.updateSentenceScoreDisplayWithAnimation();
+
+      // 显示赞赏动画
+      this.showPraiseAnimation(state.sentenceConsecutiveCorrectCount);
+
+      // 显示完整句子（高亮句子中的单词形态）
+      const fullSentence = data.sentence.replace(
+        new RegExp(`\\b${data.hiddenWord}\\b`, 'gi'),
+        `<span style="color: var(--success); font-weight: 700;">${data.hiddenWord}</span>`
+      );
+
+      feedback.innerHTML = `
+        <div>✅ 回答正确！+${pointsEarned}分</div>
+        <div style="margin-top: 8px; font-size: 16px;">${fullSentence}</div>
+      `;
+      feedback.className = 'practice-feedback correct show';
+
+      // 更新数据库中的正确计数
+      if (data.wordId) {
+        const currentWord = await db.words.get(data.wordId);
+        if (currentWord) {
+          const newCorrectCount = (currentWord.correctCount || 0) + 1;
+          await db.words.update(data.wordId, {
+            lastPracticed: Date.now(),
+            correctCount: newCorrectCount
+          });
+        }
+      }
+
+      // 自动进入下一题
+      setTimeout(() => {
+        state.currentSentenceIndex++;
+        this.showNextSentence();
+      }, 2000);
+    } else {
+      // 拼写错误，重置连续正确计数
+      state.sentenceConsecutiveCorrectCount = 0;
+
+      // 更新错误计数
+      if (data.wordId) {
+        const currentWord = await db.words.get(data.wordId);
+        if (currentWord) {
+          const newErrorCount = (currentWord.errorCount || 0) + 1;
+          await db.words.update(data.wordId, {
+            errorCount: newErrorCount,
+            lastPracticed: Date.now()
+          });
+
+          // 记录本轮错误单词（保留原始句子数据）
+          const existingIndex = state.sentenceWrongWordsInRound.findIndex(w => w.id === data.wordId);
+          const updatedWordData = { ...currentWord, errorCount: newErrorCount };
+          if (existingIndex === -1) {
+            state.sentenceWrongWordsInRound.push(updatedWordData);
+          } else {
+            state.sentenceWrongWordsInRound[existingIndex] = updatedWordData;
+          }
+
+          // 检查是否需要加入高频错词本
+          await this.checkAndUpdateHighErrorStatus(data.wordId);
+        }
+      }
+
+      // 高亮差异（与原始单词比较）
+      const highlighted = this.highlightDifferences(input, data.originalWord);
+
+      feedback.innerHTML = `
+        <div>❌ 回答错误</div>
+        <div>你的答案: ${highlighted}</div>
+        <div class="correct-word">正确: ${data.originalWord}</div>
+        <div style="margin-top: 8px; font-size: 14px; color: var(--text-secondary);">${data.sentence}</div>
+      `;
+      feedback.className = 'practice-feedback incorrect show';
+
+      // 更新按钮为下一题
+      btn.innerHTML = '<i class="fa fa-arrow-right"></i> 下一词';
+      btn.onclick = () => {
+        state.currentSentenceIndex++;
+        this.showNextSentence();
+      };
+    }
+  },
+
+  // 显示句子填空完成弹窗
+  showSentencePracticeCompleteModal() {
+    const modal = document.getElementById('sentence-practice-complete-modal');
+    const scoreDisplay = document.getElementById('sentence-complete-score');
+    const statsDisplay = document.getElementById('sentence-complete-stats');
+
+    scoreDisplay.textContent = state.sentencePracticeScore;
+    statsDisplay.innerHTML = `
+      <div>总单词数: ${state.sentenceTotalWords}</div>
+      <div>正确数: ${state.sentenceCorrectWords}</div>
+      <div>正确率: ${Math.round((state.sentenceCorrectWords / state.sentenceTotalWords) * 100)}%</div>
+    `;
+
+    modal.classList.add('active');
+
+    // 触发庆祝烟花
+    this.triggerFireworks(5);
+  },
+
+  // 保存句子填空练习成绩
+  async saveSentencePracticeScore() {
+    const playerName = document.getElementById('sentence-player-name-input').value.trim();
+
+    if (!playerName) {
+      this.showToast('请输入姓名', 'error');
+      return;
+    }
+
+    const now = Date.now();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    await db.practiceScores.add({
+      playerName: playerName,
+      totalScore: state.sentencePracticeScore,
+      wordCount: state.sentenceTotalWords,
+      correctCount: state.sentenceCorrectWords,
+      mode: 'sentence', // 标记为句子填空模式
+      createdAt: now
+    });
+
+    // 记录一次完整的练习完成
+    await db.dailyPracticeSessions.add({
+      date: today.getTime(),
+      completedAt: now
+    });
+
+    this.closeSentencePracticeCompleteModal();
+    this.endSentencePractice();
+    this.updateStats();
+    this.showToast('成绩已保存！', 'success');
+  },
+
+  // 关闭句子填空完成弹窗
+  closeSentencePracticeCompleteModal() {
+    document.getElementById('sentence-practice-complete-modal').classList.remove('active');
+  },
+
+  // 跳过保存句子填空成绩
+  skipSentencePracticeScore() {
+    this.closeSentencePracticeCompleteModal();
+    this.endSentencePractice();
+    this.showToast('练习已结束', 'info');
+  },
+
+  // 结束句子填空练习
+  endSentencePractice() {
+    document.getElementById('sentence-practice-setup').style.display = 'block';
+    document.getElementById('sentence-practice-area').style.display = 'none';
+
+    // 重置状态
+    state.sentencePracticeWords = [];
+    state.sentencePracticeData = [];
+    state.currentSentenceIndex = 0;
+    state.sentenceWrongWordsInRound = [];
+    state.sentenceConsecutiveCorrectCount = 0;
+    state.sentencePracticeScore = 0;
+    state.sentenceTotalWords = 0;
+    state.sentenceCorrectWords = 0;
+    state.sentenceHintUsed = false;
+  },
+
+  // 退出句子填空练习
+  exitSentencePractice() {
+    if (confirm('确定要退出练习吗？当前进度将不会保存。')) {
+      this.endSentencePractice();
+      this.showToast('已退出练习', 'info');
+    }
   }
 };
 
