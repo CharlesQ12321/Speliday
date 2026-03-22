@@ -39,8 +39,14 @@ const state = {
   practiceScore: 0,
   // 本次练习总单词数
   totalWordsInPractice: 0,
-  // 本次练习正确数
+  // 本次练习正确数（仅第一轮）
   correctWordsInPractice: 0,
+  // 记录第一轮就答对的单词ID（用于正确率计算）
+  firstRoundCorrectIds: [],
+  // 记录第一轮总单词数（用于正确率计算，不包含复习轮次）
+  firstRoundTotalWords: 0,
+  // 记录第一轮答错的单词ID（用于正确率计算）
+  firstRoundWrongIds: [],
   // 句子填空练习相关状态
   sentencePracticeWords: [],
   sentencePracticeData: [], // 存储AI生成的句子数据 {word, sentence, chineseTranslation, hiddenWord}
@@ -50,7 +56,10 @@ const state = {
   sentencePracticeScore: 0,
   sentenceTotalWords: 0,
   sentenceCorrectWords: 0,
-  sentenceHintUsed: false
+  sentenceHintUsed: false,
+  sentenceFirstRoundCorrectIds: [], // 记录第一轮就答对的单词 ID，用于正确率计算
+  sentenceFirstRoundTotalWords: 0, // 记录第一轮的总单词数（用于正确率计算，不包含复习轮次）
+  sentenceFirstRoundWrongIds: [], // 记录第一轮答错的单词 ID（用于正确率计算）
 };
 
 // Initialize App
@@ -1643,7 +1652,10 @@ ${text}`;
     state.consecutiveCorrectCount = 0; // 重置连续正确计数
     state.practiceScore = 0; // 重置练习积分
     state.totalWordsInPractice = state.practiceWords.length; // 记录总单词数
+    state.firstRoundTotalWords = state.practiceWords.length; // 记录第一轮总单词数（用于正确率计算）
     state.correctWordsInPractice = 0; // 重置正确数
+    state.firstRoundCorrectIds = []; // 重置第一轮正确单词记录
+    state.firstRoundWrongIds = []; // 重置第一轮错误单词记录
 
     // 隐藏设置区域
     document.getElementById('practice-setup').style.display = 'none';
@@ -1891,12 +1903,18 @@ ${text}`;
     if (isCorrect) {
       // 增加连续正确计数
       state.consecutiveCorrectCount++;
-      
-      // 计算本次得分：第1次1分，每次+1分，最高5分
+
+      // 计算本次得分：第 1 次 1 分，每次 +1 分，最高 5 分
       const pointsEarned = Math.min(state.consecutiveCorrectCount, 5);
       state.practiceScore += pointsEarned;
-      state.correctWordsInPractice++;
-      
+
+      // 只记录第一轮就答对的单词（用于正确率计算）
+      // 如果这个单词之前答错过，就不计入正确数
+      if (!state.firstRoundCorrectIds.includes(word.id) && !state.firstRoundWrongIds.includes(word.id)) {
+        state.firstRoundCorrectIds.push(word.id);
+        state.correctWordsInPractice++;
+      }
+
       // 更新积分显示并添加动画
       this.updateScoreDisplayWithAnimation();
       
@@ -1939,6 +1957,10 @@ ${text}`;
       const updatedWordData = { ...word, errorCount: newErrorCount };
       if (existingIndex === -1) {
         state.wrongWordsInRound.push(updatedWordData);
+        // 同时记录到第一轮错误单词列表（用于正确率计算）
+        if (!state.firstRoundWrongIds.includes(word.id)) {
+          state.firstRoundWrongIds.push(word.id);
+        }
       } else {
         state.wrongWordsInRound[existingIndex] = updatedWordData;
       }
@@ -2121,12 +2143,12 @@ ${text}`;
     const modal = document.getElementById('practice-complete-modal');
     const scoreDisplay = document.getElementById('complete-score');
     const statsDisplay = document.getElementById('complete-stats');
-    
+
     scoreDisplay.textContent = state.practiceScore;
     statsDisplay.innerHTML = `
-      <div>总单词数: ${state.totalWordsInPractice}</div>
+      <div>总单词数: ${state.firstRoundTotalWords}</div>
       <div>正确数: ${state.correctWordsInPractice}</div>
-      <div>正确率: ${Math.round((state.correctWordsInPractice / state.totalWordsInPractice) * 100)}%</div>
+      <div>正确率: ${Math.round((state.correctWordsInPractice / state.firstRoundTotalWords) * 100)}%</div>
     `;
     
     modal.classList.add('active');
@@ -2190,6 +2212,9 @@ ${text}`;
     state.totalWordsInPractice = 0;
     state.correctWordsInPractice = 0;
     state.consecutiveCorrectCount = 0;
+    state.firstRoundCorrectIds = [];
+    state.firstRoundTotalWords = 0;
+    state.firstRoundWrongIds = [];
   },
 
   exitPractice() {
@@ -2808,7 +2833,10 @@ ${text}`;
     state.sentenceConsecutiveCorrectCount = 0;
     state.sentencePracticeScore = 0;
     state.sentenceTotalWords = state.sentencePracticeWords.length;
+    state.sentenceFirstRoundTotalWords = state.sentencePracticeWords.length; // 记录第一轮总单词数（用于正确率计算）
     state.sentenceCorrectWords = 0;
+    state.sentenceFirstRoundCorrectIds = []; // 重置第一轮正确单词记录
+    state.sentenceFirstRoundWrongIds = []; // 重置第一轮错误单词记录
 
     // 显示加载提示
     this.showLoading('正在生成句子...');
@@ -3279,7 +3307,13 @@ ${wordList}
         pointsEarned = Math.min(state.sentenceConsecutiveCorrectCount, 5);
       }
       state.sentencePracticeScore += pointsEarned;
-      state.sentenceCorrectWords++;
+
+      // 只记录第一轮就答对的单词（用于正确率计算）
+      // 如果这个单词之前答错过，就不计入正确数
+      if (data.wordId && !state.sentenceFirstRoundCorrectIds.includes(data.wordId) && !state.sentenceFirstRoundWrongIds.includes(data.wordId)) {
+        state.sentenceFirstRoundCorrectIds.push(data.wordId);
+        state.sentenceCorrectWords++;
+      }
 
       // 更新积分显示并添加动画
       this.updateSentenceScoreDisplayWithAnimation();
@@ -3335,6 +3369,10 @@ ${wordList}
           const updatedWordData = { ...currentWord, errorCount: newErrorCount };
           if (existingIndex === -1) {
             state.sentenceWrongWordsInRound.push(updatedWordData);
+            // 同时记录到第一轮错误单词列表（用于正确率计算）
+            if (!state.sentenceFirstRoundWrongIds.includes(data.wordId)) {
+              state.sentenceFirstRoundWrongIds.push(data.wordId);
+            }
           } else {
             state.sentenceWrongWordsInRound[existingIndex] = updatedWordData;
           }
@@ -3372,9 +3410,9 @@ ${wordList}
 
     scoreDisplay.textContent = state.sentencePracticeScore;
     statsDisplay.innerHTML = `
-      <div>总单词数: ${state.sentenceTotalWords}</div>
+      <div>总单词数: ${state.sentenceFirstRoundTotalWords}</div>
       <div>正确数: ${state.sentenceCorrectWords}</div>
-      <div>正确率: ${Math.round((state.sentenceCorrectWords / state.sentenceTotalWords) * 100)}%</div>
+      <div>正确率: ${Math.round((state.sentenceCorrectWords / state.sentenceFirstRoundTotalWords) * 100)}%</div>
     `;
 
     modal.classList.add('active');
@@ -3444,6 +3482,9 @@ ${wordList}
     state.sentenceTotalWords = 0;
     state.sentenceCorrectWords = 0;
     state.sentenceHintUsed = false;
+    state.sentenceFirstRoundCorrectIds = [];
+    state.sentenceFirstRoundTotalWords = 0;
+    state.sentenceFirstRoundWrongIds = [];
   },
 
   // 退出句子填空练习
