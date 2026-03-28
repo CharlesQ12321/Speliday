@@ -1976,9 +1976,8 @@ ${text}`;
       const highlighted = this.highlightDifferences(input, word.word);
 
       feedback.innerHTML = `
-        <div>❌ 回答错误</div>
-        <div>你的答案: ${highlighted}</div>
-        <div class="correct-word">正确: ${word.word}</div>
+        <div>❌ 拼写错误</div>
+        <div class="correct-word">正确：${word.word}</div>
       `;
       feedback.className = 'practice-feedback incorrect show';
 
@@ -3405,9 +3404,8 @@ ${wordList}
       const highlighted = this.highlightDifferences(input, data.originalWord);
 
       feedback.innerHTML = `
-        <div>❌ 回答错误</div>
-        <div>你的答案: ${highlighted}</div>
-        <div class="correct-word">正确: ${data.originalWord}</div>
+        <div>❌ 拼写错误</div>
+        <div class="correct-word">正确：${data.originalWord}</div>
         <div style="margin-top: 8px; font-size: 14px; color: var(--text-secondary);">${data.sentence}</div>
       `;
       feedback.className = 'practice-feedback incorrect show';
