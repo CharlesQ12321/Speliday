@@ -1666,6 +1666,10 @@ ${text}`;
     // 隐藏底部导航栏
     document.querySelector('.bottom-nav').style.display = 'none';
 
+    // 隐藏 header 并调整内容位置
+    document.querySelector('.header').classList.add('hidden');
+    document.querySelector('.main-content').classList.add('practice-mode');
+
     // 先显示第一个单词
     this.showNextWord();
 
@@ -2210,6 +2214,9 @@ ${text}`;
     document.getElementById('practice-area').style.display = 'none';
     // 显示底部导航栏
     document.querySelector('.bottom-nav').style.display = 'flex';
+    // 显示 header 并恢复内容位置
+    document.querySelector('.header').classList.remove('hidden');
+    document.querySelector('.main-content').classList.remove('practice-mode');
     state.practiceWords = [];
     state.currentPracticeIndex = 0;
     state.wrongWordsInRound = [];
@@ -2859,6 +2866,10 @@ ${text}`;
       // 隐藏底部导航栏
       document.querySelector('.bottom-nav').style.display = 'none';
 
+      // 隐藏 header 并调整内容位置
+      document.querySelector('.header').classList.add('hidden');
+      document.querySelector('.main-content').classList.add('practice-mode');
+
       // 显示第一个单词
       this.showNextSentence();
 
@@ -3482,6 +3493,10 @@ ${wordList}
 
     // 显示底部导航栏
     document.querySelector('.bottom-nav').style.display = 'flex';
+
+    // 显示 header 并恢复内容位置
+    document.querySelector('.header').classList.remove('hidden');
+    document.querySelector('.main-content').classList.remove('practice-mode');
 
     // 重置状态
     state.sentencePracticeWords = [];

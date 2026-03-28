@@ -83,6 +83,17 @@
       align-items: center;
       margin-bottom: 20px;
       padding-top: env(safe-area-inset-top, 0);
+      transition: var(--transition);
+    }
+
+    /* 练习模式下隐藏 header */
+    .header.hidden {
+      display: none;
+    }
+
+    /* 练习模式下 main-content 调整 padding */
+    .main-content.practice-mode {
+      padding-top: 0;
     }
 
     .logo {
