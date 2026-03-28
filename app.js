@@ -25,7 +25,7 @@ const state = {
   words: [],
   apiSettings: {
     provider: 'glm',  // 默认使用智谱AI GLM-4.6V-Flash
-    key: 'd54dc5bab2624d67b0525a82958b7ca9.F5u7mVKLCD5NHQt5',  // 内置API Key
+    key: '0e86562597674fd8a79c5f2c91e7cabf.6S6IOql0iwQ53niW',  // 内置API Key
     url: ''
   },
   // Camera and Image Processing
