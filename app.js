@@ -1663,6 +1663,9 @@ ${text}`;
     // 显示练习区域
     document.getElementById('practice-area').style.display = 'block';
 
+    // 隐藏底部导航栏
+    document.querySelector('.bottom-nav').style.display = 'none';
+
     // 先显示第一个单词
     this.showNextWord();
 
@@ -2205,6 +2208,8 @@ ${text}`;
   endPractice() {
     document.getElementById('practice-setup').style.display = 'block';
     document.getElementById('practice-area').style.display = 'none';
+    // 显示底部导航栏
+    document.querySelector('.bottom-nav').style.display = 'flex';
     state.practiceWords = [];
     state.currentPracticeIndex = 0;
     state.wrongWordsInRound = [];
@@ -2851,6 +2856,9 @@ ${text}`;
       document.getElementById('sentence-practice-setup').style.display = 'none';
       document.getElementById('sentence-practice-area').style.display = 'block';
 
+      // 隐藏底部导航栏
+      document.querySelector('.bottom-nav').style.display = 'none';
+
       // 显示第一个单词
       this.showNextSentence();
 
@@ -3471,6 +3479,9 @@ ${wordList}
   endSentencePractice() {
     document.getElementById('sentence-practice-setup').style.display = 'block';
     document.getElementById('sentence-practice-area').style.display = 'none';
+
+    // 显示底部导航栏
+    document.querySelector('.bottom-nav').style.display = 'flex';
 
     // 重置状态
     state.sentencePracticeWords = [];
