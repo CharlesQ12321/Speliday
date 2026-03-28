@@ -21,7 +21,15 @@ class ImageEditor {
     // 全局鼠标/触摸事件
     document.addEventListener('mousemove', (e) => this.handleDrag(e));
     document.addEventListener('mouseup', () => this.stopDrag());
-    document.addEventListener('touchmove', (e) => this.handleDrag(e.touches[0]), { passive: false });
+    
+    // 触摸事件：在调整大小或拖动时阻止默认行为
+    document.addEventListener('touchmove', (e) => {
+      if (this.isResizing || this.isDragging) {
+        e.preventDefault();
+      }
+      this.handleDrag(e.touches[0]);
+    }, { passive: false });
+    
     document.addEventListener('touchend', () => this.stopDrag());
   }
 
