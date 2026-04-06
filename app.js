@@ -61,10 +61,12 @@ const state = {
   sentenceFirstRoundTotalWords: 0, // 记录第一轮的总单词数（用于正确率计算，不包含复习轮次）
   sentenceFirstRoundWrongIds: [], // 记录第一轮答错的单词 ID（用于正确率计算）
   // 僵尸游戏相关状态
-  zombiePosition: 0, // 僵尸位置百分比 (0-100)，0表示在最右边(起点)，100表示到达豌豆
-  zombieTotalTime: 0, // 僵尸到达豌豆的总时间(秒)
+  zombiePosition: 0, // 僵尸位置百分比 (0-100)，0 表示在最右边 (起点)，100 表示到达豌豆
+  zombieTotalTime: 0, // 僵尸到达豌豆的总时间 (秒)
   zombieTimer: null, // 僵尸移动计时器
   zombieStartTime: null, // 僵尸开始移动的时间
+  zombiePushBack: 0, // 累计被子弹击退的百分比
+  zombieForward: 0, // 累计答错前进的百分比
 };
 
 // Initialize App
@@ -1953,10 +1955,12 @@ ${text}`;
 
   // 初始化僵尸游戏
   initZombieGame(wordCount) {
-    // 计算总时间：每个单词15秒
+    // 计算总时间：每个单词 15 秒
     state.zombieTotalTime = wordCount * 15;
-    state.zombiePosition = 0; // 从0开始（最右边）
+    state.zombiePosition = 0; // 从 0 开始（最右边）
     state.zombieStartTime = Date.now();
+    state.zombiePushBack = 0; // 重置击退量
+    state.zombieForward = 0; // 重置前进量
 
     // 重置僵尸显示位置
     this.updateZombieDisplay();
@@ -1967,7 +1971,7 @@ ${text}`;
     }
     state.zombieTimer = setInterval(() => {
       this.updateZombiePosition();
-    }, 100); // 每100ms更新一次位置
+    }, 100); // 每 100ms 更新一次位置
   },
 
   // 更新僵尸位置（基于时间自动前进）
@@ -1986,12 +1990,15 @@ ${text}`;
     const elapsed = (Date.now() - state.zombieStartTime) / 1000; // 已过去秒数
     const progressPercent = (elapsed / state.zombieTotalTime) * 100;
 
-    // 更新位置（取当前位置和基于时间的位置的较大值，确保僵尸不会后退）
-    const timeBasedPosition = Math.min(progressPercent, 100);
-    if (timeBasedPosition > state.zombiePosition) {
-      state.zombiePosition = timeBasedPosition;
-      this.updateZombieDisplay();
-    }
+    // 时间推进的基础位置（不考虑击退和前进）
+    const basePosition = Math.min(progressPercent, 100);
+    
+    // 实际位置 = 基础位置 - 累计击退量 + 累计前进量
+    const actualPosition = Math.min(Math.max(basePosition - state.zombiePushBack + state.zombieForward, 0), 100);
+    
+    // 更新位置
+    state.zombiePosition = actualPosition;
+    this.updateZombieDisplay();
 
     // 检查是否到达
     if (state.zombiePosition >= 100) {
@@ -2025,9 +2032,10 @@ ${text}`;
 
   // 僵尸前进（答错时调用）
   moveZombieForward() {
-    // 前进总距离的10%
-    state.zombiePosition = Math.min(state.zombiePosition + 10, 100);
-    this.updateZombieDisplay();
+    // 增加累计前进量
+    state.zombieForward = (state.zombieForward || 0) + 10;
+    // 重新计算并更新位置
+    this.updateZombiePosition();
 
     // 检查是否到达
     if (state.zombiePosition >= 100) {
@@ -2037,9 +2045,10 @@ ${text}`;
 
   // 击退僵尸（答对时调用）
   pushZombieBack(pushDistance = 5) {
-    // 击退总距离的指定百分比，不能小于0
-    state.zombiePosition = Math.max(state.zombiePosition - pushDistance, 0);
-    this.updateZombieDisplay();
+    // 增加累计击退量
+    state.zombiePushBack = (state.zombiePushBack || 0) + pushDistance;
+    // 重新计算并更新位置
+    this.updateZombiePosition();
   },
 
   // 处理僵尸到达豌豆
@@ -2141,32 +2150,37 @@ ${text}`;
   },
 
   // 触发子弹动画 - 根据连击数发射多个子弹
-  fireBullet(count) {
+  fireBullet(count, onBulletHit) {
     const charactersContainer = document.querySelector('.practice-characters');
     if (!charactersContainer) return;
 
-    // 计算僵尸当前位置
     const containerWidth = charactersContainer.offsetWidth;
     const trackWidth = 320; // zombie-position-track 宽度
     const zombieWidth = 80;
-    const maxMove = trackWidth - zombieWidth;
-    const zombieCurrentRight = (state.zombiePosition / 100) * maxMove;
-
-    // 计算子弹目标位置
-    const bulletTargetLeft = containerWidth - zombieCurrentRight - zombieWidth / 2;
-    const bulletPercent = (bulletTargetLeft / containerWidth) * 100;
 
     // 发射多个子弹，每个子弹有延迟
     for (let i = 0; i < count; i++) {
       setTimeout(() => {
         const bullet = document.getElementById(`bullet-${i}`);
         if (bullet) {
+          // 每次发射时重新计算僵尸当前位置（因为僵尸可能已被之前的子弹击退）
+          const maxMove = trackWidth - zombieWidth;
+          const zombieCurrentRight = (state.zombiePosition / 100) * maxMove;
+          const bulletTargetLeft = containerWidth - zombieCurrentRight - zombieWidth / 2;
+          const bulletPercent = (bulletTargetLeft / containerWidth) * 100;
+
           // 设置自定义属性用于动画
           bullet.style.setProperty('--bullet-target', `${bulletPercent}%`);
 
           bullet.classList.remove('flying');
           void bullet.offsetWidth;
           bullet.classList.add('flying');
+
+          // 子弹击中时触发回调（动画进行到85%时）
+          setTimeout(() => {
+            if (onBulletHit) onBulletHit(i);
+          }, 425); // 500ms * 0.85 = 425ms
+
           setTimeout(() => {
             bullet.classList.remove('flying');
           }, 500);
@@ -2222,9 +2236,13 @@ ${text}`;
 
       // 触发子弹动画（连击数=子弹数，最大5个）并击退僵尸（1个子弹=2%，5个子弹=10%）
       const bulletCount = Math.min(state.consecutiveCorrectCount, 5);
-      const pushDistance = bulletCount * 2; // 每个子弹击退2%
-      this.fireBullet(bulletCount);
-      this.pushZombieBack(pushDistance);
+      const pushPerBullet = 2; // 每个子弹击退2%
+      let hitCount = 0;
+      this.fireBullet(bulletCount, (bulletIndex) => {
+        // 每个子弹击中时击退僵尸
+        hitCount++;
+        this.pushZombieBack(pushPerBullet);
+      });
 
       // 更新积分显示并添加动画
       this.updateScoreDisplayWithAnimation();
@@ -2552,6 +2570,8 @@ ${text}`;
     state.zombiePosition = 0;
     state.zombieTotalTime = 0;
     state.zombieStartTime = null;
+    state.zombiePushBack = 0;
+    state.zombieForward = 0;
   },
 
   exitPractice() {
