@@ -2095,7 +2095,7 @@ ${text}`;
     if (bullet && charactersContainer) {
       // 计算僵尸当前位置
       const containerWidth = charactersContainer.offsetWidth;
-      const trackWidth = 350; // zombie-position-track 宽度
+      const trackWidth = 320; // zombie-position-track 宽度
       const zombieWidth = 80;
       const maxMove = trackWidth - zombieWidth;
       const zombieCurrentRight = (state.zombiePosition / 100) * maxMove;
