@@ -2003,6 +2003,7 @@ ${text}`;
   updateZombieDisplay() {
     const indicator = document.getElementById('zombie-indicator');
     const track = document.querySelector('.zombie-position-track');
+    const progressEl = document.getElementById('zombie-progress');
     if (indicator && track) {
       // 计算轨道宽度，考虑僵尸图像宽度（80px）
       const trackWidth = track.offsetWidth;
@@ -2014,6 +2015,11 @@ ${text}`;
       const movePixels = (state.zombiePosition / 100) * maxMove;
       const rightPercent = (movePixels / trackWidth) * 100;
       indicator.style.right = `${rightPercent}%`;
+
+      // 更新进度百分比显示
+      if (progressEl) {
+        progressEl.textContent = `${Math.round(state.zombiePosition)}%`;
+      }
     }
   },
 
