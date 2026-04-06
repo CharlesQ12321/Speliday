@@ -1882,6 +1882,19 @@ ${text}`;
     }
   },
 
+  // 触发子弹动画
+  fireBullet() {
+    const bullet = document.getElementById('bullet');
+    if (bullet) {
+      bullet.classList.remove('flying');
+      void bullet.offsetWidth;
+      bullet.classList.add('flying');
+      setTimeout(() => {
+        bullet.classList.remove('flying');
+      }, 600);
+    }
+  },
+
   // 更新积分显示并添加动画
   updateScoreDisplayWithAnimation() {
     const scoreEl = document.getElementById('practice-current-score');
@@ -1922,9 +1935,12 @@ ${text}`;
         state.correctWordsInPractice++;
       }
 
+      // 触发子弹动画
+      this.fireBullet();
+
       // 更新积分显示并添加动画
       this.updateScoreDisplayWithAnimation();
-      
+
       // 显示赞赏动画
       this.showPraiseAnimation(state.consecutiveCorrectCount);
 
