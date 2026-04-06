@@ -60,6 +60,11 @@ const state = {
   sentenceFirstRoundCorrectIds: [], // 记录第一轮就答对的单词 ID，用于正确率计算
   sentenceFirstRoundTotalWords: 0, // 记录第一轮的总单词数（用于正确率计算，不包含复习轮次）
   sentenceFirstRoundWrongIds: [], // 记录第一轮答错的单词 ID（用于正确率计算）
+  // 僵尸游戏相关状态
+  zombiePosition: 0, // 僵尸位置百分比 (0-100)，0表示在最右边(起点)，100表示到达豌豆
+  zombieTotalTime: 0, // 僵尸到达豌豆的总时间(秒)
+  zombieTimer: null, // 僵尸移动计时器
+  zombieStartTime: null, // 僵尸开始移动的时间
 };
 
 // Initialize App
@@ -1657,6 +1662,9 @@ ${text}`;
     state.firstRoundCorrectIds = []; // 重置第一轮正确单词记录
     state.firstRoundWrongIds = []; // 重置第一轮错误单词记录
 
+    // 初始化僵尸游戏状态
+    this.initZombieGame(state.practiceWords.length);
+
     // 隐藏设置区域
     document.getElementById('practice-setup').style.display = 'none';
 
@@ -1713,6 +1721,9 @@ ${text}`;
         setTimeout(() => {
           countdownEl.style.display = 'none';
           numberEl.classList.remove('go-text');
+          // 倒计时结束后给输入框设置焦点
+          const input = document.getElementById('practice-input');
+          if (input) input.focus();
         }, 600);
       }
     };
@@ -1804,6 +1815,18 @@ ${text}`;
     const btn = document.getElementById('practice-check-btn');
     btn.textContent = '检查';
     btn.onclick = () => this.checkAnswer();
+
+    // 恢复输入框回车事件为检查答案
+    const input = document.getElementById('practice-input');
+    input.onkeypress = (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        this.checkAnswer();
+      }
+    };
+
+    // 确保输入框获得焦点
+    input.focus();
   },
 
   // 更新积分显示
@@ -1882,16 +1905,215 @@ ${text}`;
     }
   },
 
+  // 初始化僵尸游戏
+  initZombieGame(wordCount) {
+    // 计算总时间：每个单词15秒
+    state.zombieTotalTime = wordCount * 15;
+    state.zombiePosition = 0; // 从0开始（最右边）
+    state.zombieStartTime = Date.now();
+
+    // 重置僵尸显示位置
+    this.updateZombieDisplay();
+
+    // 启动僵尸移动计时器
+    if (state.zombieTimer) {
+      clearInterval(state.zombieTimer);
+    }
+    state.zombieTimer = setInterval(() => {
+      this.updateZombiePosition();
+    }, 100); // 每100ms更新一次位置
+  },
+
+  // 更新僵尸位置（基于时间自动前进）
+  updateZombiePosition() {
+    if (state.zombiePosition >= 100) {
+      // 僵尸已到达，停止计时器
+      if (state.zombieTimer) {
+        clearInterval(state.zombieTimer);
+        state.zombieTimer = null;
+      }
+      this.handleZombieReached();
+      return;
+    }
+
+    // 计算基于时间的自动前进
+    const elapsed = (Date.now() - state.zombieStartTime) / 1000; // 已过去秒数
+    const progressPercent = (elapsed / state.zombieTotalTime) * 100;
+
+    // 更新位置（取当前位置和基于时间的位置的较大值，确保僵尸不会后退）
+    const timeBasedPosition = Math.min(progressPercent, 100);
+    if (timeBasedPosition > state.zombiePosition) {
+      state.zombiePosition = timeBasedPosition;
+      this.updateZombieDisplay();
+    }
+
+    // 检查是否到达
+    if (state.zombiePosition >= 100) {
+      this.handleZombieReached();
+    }
+  },
+
+  // 更新僵尸显示位置
+  updateZombieDisplay() {
+    const indicator = document.getElementById('zombie-indicator');
+    const track = document.querySelector('.zombie-position-track');
+    if (indicator && track) {
+      // 计算轨道宽度，考虑僵尸图像宽度（80px）
+      const trackWidth = track.offsetWidth;
+      const zombieWidth = 80; // 僵尸图像宽度
+      const maxMove = trackWidth - zombieWidth; // 最大可移动距离（像素）
+
+      // state.zombiePosition 是 0-100 的百分比（0=最右边起点，100=到达豌豆）
+      // 需要转换为实际的 right 值（像素），然后转为百分比
+      const movePixels = (state.zombiePosition / 100) * maxMove;
+      const rightPercent = (movePixels / trackWidth) * 100;
+      indicator.style.right = `${rightPercent}%`;
+    }
+  },
+
+  // 僵尸前进（答错时调用）
+  moveZombieForward() {
+    // 前进总距离的10%
+    state.zombiePosition = Math.min(state.zombiePosition + 10, 100);
+    this.updateZombieDisplay();
+
+    // 检查是否到达
+    if (state.zombiePosition >= 100) {
+      setTimeout(() => this.handleZombieReached(), 500);
+    }
+  },
+
+  // 击退僵尸（答对时调用）
+  pushZombieBack() {
+    // 击退总距离的5%，但不能小于0
+    state.zombiePosition = Math.max(state.zombiePosition - 5, 0);
+    this.updateZombieDisplay();
+  },
+
+  // 处理僵尸到达豌豆
+  handleZombieReached() {
+    // 停止计时器
+    if (state.zombieTimer) {
+      clearInterval(state.zombieTimer);
+      state.zombieTimer = null;
+    }
+
+    // 添加攻击动画
+    const indicator = document.getElementById('zombie-indicator');
+    if (indicator) {
+      indicator.classList.add('reached');
+    }
+
+    // 延迟后显示失败画面
+    setTimeout(() => {
+      this.showPracticeFailed();
+    }, 1000);
+  },
+
+  // 显示练习失败画面
+  showPracticeFailed() {
+    const modal = document.getElementById('practice-failed-modal');
+    const statsEl = document.getElementById('failed-stats');
+    const scoreEl = document.getElementById('failed-score');
+
+    // 显示积分
+    if (scoreEl) {
+      scoreEl.textContent = state.practiceScore;
+    }
+
+    // 统计信息
+    const totalWords = state.totalWordsInPractice;
+    const correctWords = state.correctWordsInPractice;
+    const accuracy = totalWords > 0 ? Math.round((correctWords / totalWords) * 100) : 0;
+
+    statsEl.innerHTML = `
+      <div style="display: flex; justify-content: space-around; margin-bottom: 10px;">
+        <div>
+          <div style="font-size: 24px; font-weight: 700; color: var(--text-primary);">${correctWords}</div>
+          <div style="font-size: 12px; color: var(--text-muted);">答对</div>
+        </div>
+        <div>
+          <div style="font-size: 24px; font-weight: 700; color: var(--error);">${totalWords - correctWords}</div>
+          <div style="font-size: 12px; color: var(--text-muted);">答错</div>
+        </div>
+        <div>
+          <div style="font-size: 24px; font-weight: 700; color: var(--primary);">${accuracy}%</div>
+          <div style="font-size: 12px; color: var(--text-muted);">正确率</div>
+        </div>
+      </div>
+    `;
+
+    modal.classList.add('active');
+  },
+
+  // 保存失败练习成绩
+  async saveFailedPracticeScore() {
+    const playerNameInput = document.getElementById('failed-player-name-input');
+    const playerName = playerNameInput.value.trim();
+
+    if (!playerName) {
+      this.showToast('请输入您的姓名', 'error');
+      return;
+    }
+
+    // 保存成绩到数据库
+    await db.practiceScores.add({
+      playerName: playerName,
+      totalScore: state.practiceScore,
+      wordCount: state.totalWordsInPractice,
+      correctCount: state.correctWordsInPractice,
+      createdAt: Date.now()
+    });
+
+    this.showToast('成绩已保存', 'success');
+
+    // 关闭弹窗并退出练习
+    document.getElementById('practice-failed-modal').classList.remove('active');
+    this.endPractice();
+  },
+
+  // 跳过保存失败成绩
+  skipFailedPracticeScore() {
+    document.getElementById('practice-failed-modal').classList.remove('active');
+    this.endPractice();
+    this.showToast('练习已结束', 'info');
+  },
+
+  // 重试练习
+  retryPractice() {
+    // 关闭失败弹窗
+    document.getElementById('practice-failed-modal').classList.remove('active');
+
+    // 重置状态并重新开始
+    this.startPractice('random');
+  },
+
   // 触发子弹动画
   fireBullet() {
     const bullet = document.getElementById('bullet');
-    if (bullet) {
+    const charactersContainer = document.querySelector('.practice-characters');
+    if (bullet && charactersContainer) {
+      // 计算僵尸当前位置
+      const containerWidth = charactersContainer.offsetWidth;
+      const trackWidth = 350; // zombie-position-track 宽度
+      const zombieWidth = 80;
+      const maxMove = trackWidth - zombieWidth;
+      const zombieCurrentRight = (state.zombiePosition / 100) * maxMove;
+
+      // 计算子弹需要飞行的距离（从豌豆到僵尸）
+      // 子弹从左侧开始，需要飞行到 (containerWidth - zombieCurrentRight - zombieWidth/2)
+      const bulletTargetLeft = containerWidth - zombieCurrentRight - zombieWidth / 2;
+      const bulletPercent = (bulletTargetLeft / containerWidth) * 100;
+
+      // 设置自定义属性用于动画
+      bullet.style.setProperty('--bullet-target', `${bulletPercent}%`);
+
       bullet.classList.remove('flying');
       void bullet.offsetWidth;
       bullet.classList.add('flying');
       setTimeout(() => {
         bullet.classList.remove('flying');
-      }, 600);
+      }, 400);
     }
   },
 
@@ -1935,8 +2157,9 @@ ${text}`;
         state.correctWordsInPractice++;
       }
 
-      // 触发子弹动画
+      // 触发子弹动画并击退僵尸
       this.fireBullet();
+      this.pushZombieBack();
 
       // 更新积分显示并添加动画
       this.updateScoreDisplayWithAnimation();
@@ -1966,7 +2189,10 @@ ${text}`;
     } else {
       // 拼写错误，重置连续正确计数
       state.consecutiveCorrectCount = 0;
-      
+
+      // 僵尸前进10%
+      this.moveZombieForward();
+
       // Increment error count - 先从数据库获取最新值，确保正确累加
       const currentWord = await db.words.get(word.id);
       const newErrorCount = (currentWord?.errorCount || 0) + 1;
@@ -2002,6 +2228,16 @@ ${text}`;
       btn.onclick = () => {
         state.currentPracticeIndex++;
         this.showNextWord();
+      };
+
+      // 更新输入框回车事件，直接跳转到下一题
+      const inputEl = document.getElementById('practice-input');
+      inputEl.onkeypress = (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          state.currentPracticeIndex++;
+          this.showNextWord();
+        }
       };
     }
     
@@ -2225,6 +2461,12 @@ ${text}`;
   },
 
   endPractice() {
+    // 停止僵尸计时器
+    if (state.zombieTimer) {
+      clearInterval(state.zombieTimer);
+      state.zombieTimer = null;
+    }
+
     document.getElementById('practice-setup').style.display = 'block';
     document.getElementById('practice-area').style.display = 'none';
     // 显示底部导航栏
@@ -2242,6 +2484,9 @@ ${text}`;
     state.firstRoundCorrectIds = [];
     state.firstRoundTotalWords = 0;
     state.firstRoundWrongIds = [];
+    state.zombiePosition = 0;
+    state.zombieTotalTime = 0;
+    state.zombieStartTime = null;
   },
 
   exitPractice() {

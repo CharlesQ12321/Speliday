@@ -843,24 +843,72 @@
     }
 
     .bullet.flying {
-      animation: bulletFly 0.6s ease-out forwards;
+      animation: bulletFlyToZombie 0.4s ease-out forwards;
     }
 
-    @keyframes bulletFly {
+    @keyframes bulletFlyToZombie {
       0% {
         left: 0;
         transform: translateY(-50%) scale(0);
         opacity: 0;
       }
-      10% {
+      15% {
+        left: calc(var(--bullet-target, 80%) * 0.2);
+        transform: translateY(-50%) scale(1);
+        opacity: 1;
+      }
+      85% {
+        left: var(--bullet-target, 80%);
         transform: translateY(-50%) scale(1);
         opacity: 1;
       }
       100% {
-        left: 100%;
-        transform: translateY(-50%) scale(1);
-        opacity: 1;
+        left: var(--bullet-target, 80%);
+        transform: translateY(-50%) scale(0.6);
+        opacity: 0;
       }
+    }
+
+    .zombie-position-track {
+      position: absolute;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      width: 350px;
+      pointer-events: none;
+    }
+
+    .danger-zone {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 60px;
+      background: linear-gradient(to right, rgba(239, 68, 68, 0.3), transparent);
+      border-left: 3px solid var(--error);
+    }
+
+    .zombie-indicator {
+      position: absolute;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      transition: right 0.5s ease-out;
+    }
+
+    .zombie-indicator img {
+      height: 80px;
+      width: auto;
+      object-fit: contain;
+    }
+
+    .zombie-indicator.reached {
+      animation: zombieAttack 0.5s ease-in-out;
+    }
+
+    @keyframes zombieAttack {
+      0%, 100% { transform: translateY(-50%) scale(1); }
+      50% { transform: translateY(-50%) scale(1.2); }
     }
 
     .practice-progress {
@@ -1672,7 +1720,11 @@
             <div class="practice-characters">
               <img src="豌豆.gif" alt="豌豆" class="character-img character-left">
               <div class="bullet" id="bullet"></div>
-              <img src="僵尸行走.gif" alt="僵尸" class="character-img character-right">
+              <div class="zombie-position-track">
+                <div class="zombie-indicator" id="zombie-indicator">
+                  <img src="僵尸行走.gif" alt="僵尸" class="zombie-img">
+                </div>
+              </div>
             </div>
             <div class="practice-progress">
               <div class="progress-bar">
@@ -1687,15 +1739,14 @@
               点击开始练习
             </div>
 
-            <input type="text" 
-                   class="input practice-input" 
-                   id="practice-input" 
+            <input type="text"
+                   class="input practice-input"
+                   id="practice-input"
                    placeholder="输入英文单词"
                    autocomplete="off"
                    autocorrect="off"
                    autocapitalize="off"
-                   spellcheck="false"
-                   onkeypress="if(event.key==='Enter'){event.preventDefault();document.getElementById('practice-check-btn').click();}">
+                   spellcheck="false">
 
             <!-- 按钮区域：检查、报错、退出按钮并排 -->
             <div style="margin-top: 16px; display: flex; gap: 8px; width: 100%; max-width: 360px;">
@@ -2111,6 +2162,49 @@
         <div class="modal-footer" id="camera-footer" style="display: none;">
           <button class="btn btn-secondary" onclick="app.resetCamera()">重新选择</button>
           <button class="btn btn-primary" onclick="app.confirmImport()">确认入库</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Practice Failed Modal -->
+    <div class="modal-overlay" id="practice-failed-modal">
+      <div class="modal" style="max-width: 400px;">
+        <div class="modal-header">
+          <div class="modal-title">💀 游戏结束</div>
+        </div>
+        <div class="modal-body" style="text-align: center;">
+          <div style="font-size: 72px; margin: 20px 0;">
+            🧟‍♂️
+          </div>
+          <div style="font-size: 18px; color: var(--error); margin-bottom: 12px; font-weight: 600;">
+            僵尸到达了你！
+          </div>
+          <div style="font-size: 14px; color: var(--text-secondary); margin-bottom: 20px;">
+            练习失败，下次再接再厉！
+          </div>
+          <div style="font-size: 72px; font-weight: 900; color: var(--primary); margin: 20px 0; text-shadow: 0 0 30px rgba(59, 130, 246, 0.5);" id="failed-score">
+            0
+          </div>
+          <div style="font-size: 18px; color: var(--text-secondary); margin-bottom: 20px;">
+            总积分
+          </div>
+          <div id="failed-stats" style="background: var(--bg-tertiary); padding: 16px; border-radius: var(--radius); margin-bottom: 20px; font-size: 14px; color: var(--text-secondary);">
+          </div>
+          <div class="input-group">
+            <label class="input-label">请输入您的姓名</label>
+            <input type="text" class="input" id="failed-player-name-input" placeholder="您的姓名" maxlength="20" onkeypress="if(event.key==='Enter'){event.preventDefault();app.saveFailedPracticeScore();}">
+          </div>
+        </div>
+        <div class="modal-footer" style="justify-content: center; flex-direction: column; gap: 10px;">
+          <button class="btn btn-primary btn-block" onclick="app.saveFailedPracticeScore()">
+            <i class="fa fa-save"></i> 保存成绩
+          </button>
+          <button class="btn btn-secondary btn-block" onclick="app.retryPractice()">
+            <i class="fa fa-refresh"></i> 重试
+          </button>
+          <button class="btn btn-secondary btn-block" onclick="app.skipFailedPracticeScore()">
+            <i class="fa fa-arrow-right"></i> 跳过
+          </button>
         </div>
       </div>
     </div>
