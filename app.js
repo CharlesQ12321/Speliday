@@ -2030,9 +2030,9 @@ ${text}`;
   },
 
   // 击退僵尸（答对时调用）
-  pushZombieBack() {
-    // 击退总距离的5%，但不能小于0
-    state.zombiePosition = Math.max(state.zombiePosition - 5, 0);
+  pushZombieBack(pushDistance = 5) {
+    // 击退总距离的指定百分比，不能小于0
+    state.zombiePosition = Math.max(state.zombiePosition - pushDistance, 0);
     this.updateZombieDisplay();
   },
 
@@ -2134,32 +2134,38 @@ ${text}`;
     this.startPractice('random');
   },
 
-  // 触发子弹动画
-  fireBullet() {
-    const bullet = document.getElementById('bullet');
+  // 触发子弹动画 - 根据连击数发射多个子弹
+  fireBullet(count) {
     const charactersContainer = document.querySelector('.practice-characters');
-    if (bullet && charactersContainer) {
-      // 计算僵尸当前位置
-      const containerWidth = charactersContainer.offsetWidth;
-      const trackWidth = 320; // zombie-position-track 宽度
-      const zombieWidth = 80;
-      const maxMove = trackWidth - zombieWidth;
-      const zombieCurrentRight = (state.zombiePosition / 100) * maxMove;
+    if (!charactersContainer) return;
 
-      // 计算子弹需要飞行的距离（从豌豆到僵尸）
-      // 子弹从左侧开始，需要飞行到 (containerWidth - zombieCurrentRight - zombieWidth/2)
-      const bulletTargetLeft = containerWidth - zombieCurrentRight - zombieWidth / 2;
-      const bulletPercent = (bulletTargetLeft / containerWidth) * 100;
+    // 计算僵尸当前位置
+    const containerWidth = charactersContainer.offsetWidth;
+    const trackWidth = 320; // zombie-position-track 宽度
+    const zombieWidth = 80;
+    const maxMove = trackWidth - zombieWidth;
+    const zombieCurrentRight = (state.zombiePosition / 100) * maxMove;
 
-      // 设置自定义属性用于动画
-      bullet.style.setProperty('--bullet-target', `${bulletPercent}%`);
+    // 计算子弹目标位置
+    const bulletTargetLeft = containerWidth - zombieCurrentRight - zombieWidth / 2;
+    const bulletPercent = (bulletTargetLeft / containerWidth) * 100;
 
-      bullet.classList.remove('flying');
-      void bullet.offsetWidth;
-      bullet.classList.add('flying');
+    // 发射多个子弹，每个子弹有延迟
+    for (let i = 0; i < count; i++) {
       setTimeout(() => {
-        bullet.classList.remove('flying');
-      }, 400);
+        const bullet = document.getElementById(`bullet-${i}`);
+        if (bullet) {
+          // 设置自定义属性用于动画
+          bullet.style.setProperty('--bullet-target', `${bulletPercent}%`);
+
+          bullet.classList.remove('flying');
+          void bullet.offsetWidth;
+          bullet.classList.add('flying');
+          setTimeout(() => {
+            bullet.classList.remove('flying');
+          }, 500);
+        }
+      }, i * 100); // 每个子弹延迟100ms发射
     }
   },
 
@@ -2208,9 +2214,11 @@ ${text}`;
         state.correctWordsInPractice++;
       }
 
-      // 触发子弹动画并击退僵尸
-      this.fireBullet();
-      this.pushZombieBack();
+      // 触发子弹动画（连击数=子弹数，最大5个）并击退僵尸（1个子弹=2%，5个子弹=10%）
+      const bulletCount = Math.min(state.consecutiveCorrectCount, 5);
+      const pushDistance = bulletCount * 2; // 每个子弹击退2%
+      this.fireBullet(bulletCount);
+      this.pushZombieBack(pushDistance);
 
       // 更新积分显示并添加动画
       this.updateScoreDisplayWithAnimation();

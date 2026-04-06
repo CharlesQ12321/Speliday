@@ -834,24 +834,33 @@
       transform: translateX(80px);
     }
 
+    .bullets-container {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
     .bullet {
       position: absolute;
-      width: 20px;
-      height: 20px;
+      width: 16px;
+      height: 16px;
       background: radial-gradient(circle at 30% 30%, #90EE90, #228B22);
       border-radius: 50%;
       left: 0;
       top: 50%;
-      margin-top: -10px;
+      margin-top: -8px;
       transform: scale(0);
       opacity: 0;
       z-index: 10;
-      box-shadow: 0 0 10px rgba(34, 139, 34, 0.6);
+      box-shadow: 0 0 8px rgba(34, 139, 34, 0.6);
       will-change: transform, opacity, left;
     }
 
     .bullet.flying {
-      animation: bulletFlyToZombie 0.4s ease-out forwards;
+      animation: bulletFlyToZombie 0.5s ease-out forwards;
     }
 
     @keyframes bulletFlyToZombie {
@@ -1727,10 +1736,16 @@
             <!-- 豌豆和僵尸图片 -->
             <div class="practice-characters">
               <img src="豌豆.gif" alt="豌豆" class="character-img character-left">
-              <div class="bullet" id="bullet"></div>
+              <div class="bullets-container" id="bullets-container">
+                <div class="bullet" id="bullet-0"></div>
+                <div class="bullet" id="bullet-1"></div>
+                <div class="bullet" id="bullet-2"></div>
+                <div class="bullet" id="bullet-3"></div>
+                <div class="bullet" id="bullet-4"></div>
+              </div>
               <div class="zombie-position-track">
                 <div class="zombie-indicator" id="zombie-indicator">
-                  <img src="僵尸行走.gif" alt="僵尸" class="zombie-img">
+                  <img src="僵尸行走动图.gif" alt="僵尸" class="zombie-img">
                 </div>
               </div>
             </div>
