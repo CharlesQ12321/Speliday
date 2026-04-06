@@ -2140,6 +2140,11 @@ ${text}`;
       return;
     }
 
+    // 防止重复提交：如果已经显示反馈，则不再处理
+    if (feedback.classList.contains('show')) {
+      return;
+    }
+
     const isCorrect = input === word.word.toLowerCase();
 
     if (isCorrect) {
