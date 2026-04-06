@@ -80,7 +80,53 @@ const app = {
     this.renderLibrary();
     this.renderStats();
     this.setupEventListeners();
+    this.requestFullscreen();
     this.showToast('欢迎使用智拍单词本！', 'success');
+  },
+
+  // 请求全屏显示
+  requestFullscreen() {
+    // 检测是否为移动设备
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+    if (isMobile) {
+      // 尝试进入全屏模式
+      const docEl = document.documentElement;
+
+      if (docEl.requestFullscreen) {
+        docEl.requestFullscreen().catch(err => {
+          console.log('全屏请求失败:', err);
+        });
+      } else if (docEl.webkitRequestFullscreen) {
+        docEl.webkitRequestFullscreen().catch(err => {
+          console.log('全屏请求失败:', err);
+        });
+      } else if (docEl.mozRequestFullScreen) {
+        docEl.mozRequestFullScreen().catch(err => {
+          console.log('全屏请求失败:', err);
+        });
+      } else if (docEl.msRequestFullscreen) {
+        docEl.msRequestFullscreen().catch(err => {
+          console.log('全屏请求失败:', err);
+        });
+      }
+
+      // 隐藏地址栏（iOS Safari）
+      window.scrollTo(0, 1);
+
+      // 监听点击事件，用户交互后再次尝试进入全屏
+      const enterFullscreen = () => {
+        if (docEl.requestFullscreen) {
+          docEl.requestFullscreen().catch(() => {});
+        } else if (docEl.webkitRequestFullscreen) {
+          docEl.webkitRequestFullscreen().catch(() => {});
+        }
+      };
+
+      // 首次点击页面时尝试进入全屏
+      document.addEventListener('click', enterFullscreen, { once: true });
+      document.addEventListener('touchstart', enterFullscreen, { once: true });
+    }
   },
 
   async initDatabase() {

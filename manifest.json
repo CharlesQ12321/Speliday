@@ -3,7 +3,7 @@
   "short_name": "智拍单词本",
   "description": "AI智能拍照录入，离线拼写练习",
   "start_url": "/",
-  "display": "standalone",
+  "display": "fullscreen",
   "background_color": "#0f172a",
   "theme_color": "#0f172a",
   "orientation": "portrait",
