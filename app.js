@@ -1645,6 +1645,12 @@ ${text}`;
     state.practiceWords = this.shuffleArray(words);
     state.currentPracticeIndex = 0;
     state.wrongWordsInRound = []; // 重置本轮错误单词记录
+    state.consecutiveCorrectCount = 0; // 重置连续正确计数
+    state.practiceScore = 0; // 重置练习积分
+    state.totalWordsInPractice = state.practiceWords.length; // 记录总单词数
+
+    // 初始化僵尸游戏状态
+    this.initZombieGame(state.practiceWords.length);
 
     // 切换到练习页面
     state.currentPage = 'practice';
@@ -1664,6 +1670,13 @@ ${text}`;
     // 显示练习区域
     document.getElementById('practice-setup').style.display = 'none';
     document.getElementById('practice-area').style.display = 'block';
+
+    // 隐藏底部导航栏
+    document.querySelector('.bottom-nav').style.display = 'none';
+
+    // 隐藏 header 并调整内容位置
+    document.querySelector('.header').classList.add('hidden');
+    document.querySelector('.main-content').classList.add('practice-mode');
 
     this.showNextWord();
   },
