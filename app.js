@@ -2058,8 +2058,18 @@ ${text}`;
 
   // 击退僵尸（答对时调用）
   pushZombieBack(pushDistance = 5) {
-    // 增加累计击退量
-    state.zombiePushBack = (state.zombiePushBack || 0) + pushDistance;
+    // 计算当前实际位置
+    const elapsed = (Date.now() - state.zombieStartTime) / 1000;
+    const progressPercent = (elapsed / state.zombieTotalTime) * 100;
+    const basePosition = Math.min(progressPercent, 100);
+    const currentPosition = Math.max(basePosition - state.zombiePushBack + state.zombieForward, 0);
+    
+    // 击退量不能超过当前位置，确保僵尸位置不会小于 0
+    const maxPushBack = currentPosition + state.zombiePushBack - state.zombieForward;
+    const actualPushBack = Math.min(pushDistance, maxPushBack);
+    
+    // 增加累计击退量（但不能超过限制）
+    state.zombiePushBack = (state.zombiePushBack || 0) + actualPushBack;
     // 重新计算并更新位置
     this.updateZombiePosition();
   },
