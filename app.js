@@ -5,13 +5,27 @@
 
 // Database Setup
 const db = new Dexie('SnapWordsDB');
-db.version(6).stores({
+db.version(8).stores({
   words: '++id, word, translation, *bookIds, errorCount, correctCount, isReported, createdAt, lastPracticed',
   books: '++id, bookId, bookName, createdAt',
   settings: 'key, value',
   practiceScores: '++id, playerName, totalScore, wordCount, correctCount, createdAt',
-  dailyPracticeSessions: '++id, date, completedAt'
+  dailyPracticeSessions: '++id, date, completedAt',
+  playerProfiles: '++id, playerName, totalPoints, level, lastPlayedAt, avatar'
 });
+
+// 等级系统配置 - 王者荣耀风格
+const LEVEL_SYSTEM = {
+  levels: [
+    { id: 1, name: '倔强青铜', icon: '🥉', color: '#CD7F32', minPoints: 0, maxPoints: 500 },
+    { id: 2, name: '秩序白银', icon: '🥈', color: '#C0C0C0', minPoints: 501, maxPoints: 1500 },
+    { id: 3, name: '荣耀黄金', icon: '🥇', color: '#FFD700', minPoints: 1501, maxPoints: 3000 },
+    { id: 4, name: '尊贵铂金', icon: '💎', color: '#E5E4E2', minPoints: 3001, maxPoints: 5000 },
+    { id: 5, name: '永恒钻石', icon: '💠', color: '#4169E1', minPoints: 5001, maxPoints: 8000 },
+    { id: 6, name: '至尊星耀', icon: '⭐', color: '#9370DB', minPoints: 8001, maxPoints: 12000 },
+    { id: 7, name: '最强王者', icon: '👑', color: '#FF4500', minPoints: 12001, maxPoints: Infinity }
+  ]
+};
 
 // Application State
 const state = {
@@ -68,6 +82,62 @@ const state = {
   zombiePushBack: 0, // 累计被子弹击退的百分比
   zombieForward: 0, // 累计答错前进的百分比
 };
+
+// 等级系统辅助函数
+function calculateLevel(totalPoints) {
+  for (let i = LEVEL_SYSTEM.levels.length - 1; i >= 0; i--) {
+    const level = LEVEL_SYSTEM.levels[i];
+    if (totalPoints >= level.minPoints && totalPoints <= level.maxPoints) {
+      return level;
+    }
+  }
+  return LEVEL_SYSTEM.levels[0];
+}
+
+function getLevelProgress(totalPoints, level) {
+  if (level.maxPoints === Infinity) {
+    return 100;
+  }
+  const prevLevelMin = level.minPoints;
+  const currentRange = level.maxPoints - prevLevelMin;
+  const progress = ((totalPoints - prevLevelMin) / currentRange) * 100;
+  return Math.min(100, Math.max(0, progress));
+}
+
+async function getPlayerProfile(playerName) {
+  const profile = await db.playerProfiles.where('playerName').equals(playerName).first();
+  if (!profile) {
+    return null;
+  }
+  return profile;
+}
+
+async function updatePlayerProfile(playerName, pointsEarned) {
+  let profile = await getPlayerProfile(playerName);
+  
+  if (!profile) {
+    const level = calculateLevel(pointsEarned);
+    profile = {
+      playerName: playerName,
+      totalPoints: pointsEarned,
+      level: level.id,
+      lastPlayedAt: Date.now()
+    };
+    await db.playerProfiles.add(profile);
+  } else {
+    const newTotal = profile.totalPoints + pointsEarned;
+    const newLevel = calculateLevel(newTotal);
+    await db.playerProfiles.update(profile.id, {
+      totalPoints: newTotal,
+      level: newLevel.id,
+      lastPlayedAt: Date.now()
+    });
+    profile.totalPoints = newTotal;
+    profile.level = newLevel.id;
+  }
+  
+  return profile;
+}
 
 // Initialize App
 const app = {
@@ -167,6 +237,9 @@ const app = {
 
     // 数据迁移：将旧的 bookId 转换为 bookIds 数组
     await this.migrateBookIdToBookIds();
+    
+    // 数据迁移：将历史积分数据迁移到玩家档案系统
+    await this.migratePlayerProfiles();
   },
 
   // 初始化高频错词设置
@@ -204,6 +277,49 @@ const app = {
       console.log('BookId to BookIds migration completed');
     } catch (error) {
       console.error('Migration error:', error);
+    }
+  },
+
+  // 数据迁移：将历史积分数据迁移到玩家档案系统
+  async migratePlayerProfiles() {
+    try {
+      // 检查是否已经有玩家档案
+      const existingProfiles = await db.playerProfiles.count();
+      if (existingProfiles > 0) {
+        console.log('Player profiles already exist, skipping migration');
+        return;
+      }
+
+      // 获取所有练习成绩
+      const scores = await db.practiceScores.toArray();
+      if (scores.length === 0) {
+        console.log('No practice scores to migrate');
+        return;
+      }
+
+      // 按玩家名字分组累加积分
+      const playerPoints = {};
+      for (const score of scores) {
+        if (!playerPoints[score.playerName]) {
+          playerPoints[score.playerName] = 0;
+        }
+        playerPoints[score.playerName] += score.totalScore || 0;
+      }
+
+      // 创建玩家档案
+      for (const [playerName, totalPoints] of Object.entries(playerPoints)) {
+        const level = calculateLevel(totalPoints);
+        await db.playerProfiles.add({
+          playerName: playerName,
+          totalPoints: totalPoints,
+          level: level.id,
+          lastPlayedAt: Date.now()
+        });
+      }
+
+      console.log(`Player profiles migration completed. Created ${Object.keys(playerPoints).length} profiles.`);
+    } catch (error) {
+      console.error('Player profile migration error:', error);
     }
   },
 
@@ -307,6 +423,8 @@ const app = {
     } else if (page === 'home') {
       this.updateStats();
       this.renderRecentWords();
+    } else if (page === 'profile') {
+      this.renderProfile();
     } else if (page === 'settings') {
       // 加载高频错词设置
       this.loadHighErrorSettingsToPage();
@@ -2149,6 +2267,19 @@ ${text}`;
       createdAt: Date.now()
     });
 
+    // 更新玩家档案，累加积分（失败也给予积分鼓励）
+    const oldProfile = await getPlayerProfile(playerName);
+    const newProfile = await updatePlayerProfile(playerName, state.practiceScore);
+    
+    // 检查是否升级
+    if (oldProfile) {
+      const newLevelInfo = LEVEL_SYSTEM.levels.find(l => l.id === newProfile.level);
+      if (newProfile.level > oldProfile.level) {
+        this.showToast(`恭喜升级！${newLevelInfo.name}`, 'success');
+        this.triggerFireworks(8);
+      }
+    }
+
     this.showToast('成绩已保存', 'success');
 
     // 关闭弹窗并退出练习
@@ -2530,6 +2661,12 @@ ${text}`;
       return;
     }
 
+    // 验证：单词数必须大于 0 才能保存成绩
+    if (state.totalWordsInPractice <= 0) {
+      this.showToast('练习数据无效，无法保存成绩', 'error');
+      return;
+    }
+
     const now = Date.now();
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -2547,6 +2684,23 @@ ${text}`;
       date: today.getTime(),
       completedAt: now
     });
+
+    // 更新玩家档案，累加积分
+    const oldProfile = await getPlayerProfile(playerName);
+    const newProfile = await updatePlayerProfile(playerName, state.practiceScore);
+    
+    // 检查是否升级
+    let leveledUp = false;
+    let newLevelInfo = null;
+    if (oldProfile) {
+      const oldLevel = LEVEL_SYSTEM.levels.find(l => l.id === oldProfile.level);
+      newLevelInfo = LEVEL_SYSTEM.levels.find(l => l.id === newProfile.level);
+      if (newProfile.level > oldProfile.level) {
+        leveledUp = true;
+        this.showToast(`恭喜升级！${newLevelInfo.name}`, 'success');
+        this.triggerFireworks(8);
+      }
+    }
 
     this.closePracticeCompleteModal();
     this.endPractice();
@@ -2613,35 +2767,413 @@ ${text}`;
     this.renderPracticeScores();
   },
 
-  // 渲染练习成绩列表
+  // 渲染个人中心页面
+  async renderProfile() {
+    // 获取所有玩家档案
+    const allProfiles = await db.playerProfiles
+      .orderBy('totalPoints')
+      .reverse()
+      .toArray();
+    
+    // 更新角色数量
+    document.getElementById('profile-player-count').textContent = `共 ${allProfiles.length} 个角色`;
+    
+    // 渲染角色选择器
+    const selectorContainer = document.getElementById('profile-character-selector');
+    if (allProfiles.length === 0) {
+      selectorContainer.innerHTML = `
+        <div style="padding: 20px; text-align: center; color: var(--text-muted); font-size: 14px; width: 100%;">
+          暂无角色，请先完成练习并保存成绩
+        </div>
+      `;
+    } else {
+      selectorContainer.innerHTML = allProfiles.map((profile, index) => {
+        const levelInfo = LEVEL_SYSTEM.levels.find(l => l.id === profile.level);
+        const isSelected = index === 0; // 默认选中第一个（积分最高的）
+        return `
+          <div onclick="app.switchProfile('${profile.playerName}')" 
+               style="flex-shrink: 0; padding: 12px 16px; background: ${isSelected ? 'var(--primary)' : 'var(--bg-secondary)'}; 
+                      border-radius: var(--radius); border: 2px solid ${isSelected ? 'var(--primary)' : 'var(--border)'}; 
+                      cursor: pointer; transition: all 0.2s ease; min-width: 120px;"
+               onmouseover="this.style.transform='translateY(-2px)'" 
+               onmouseout="this.style.transform='translateY(0)'">
+            <div style="text-align: center;">
+              <div style="font-size: 24px; margin-bottom: 4px;">${levelInfo.icon}</div>
+              <div style="font-size: 12px; font-weight: 600; color: ${isSelected ? 'white' : 'var(--text-primary)'}; margin-bottom: 4px;">
+                ${profile.playerName.substring(0, 6)}${profile.playerName.length > 6 ? '...' : ''}
+              </div>
+              <div style="font-size: 10px; color: ${isSelected ? 'rgba(255,255,255,0.8)' : 'var(--text-muted)'};">
+                ${levelInfo.name}
+              </div>
+              <div style="font-size: 14px; font-weight: 700; color: ${isSelected ? 'white' : 'var(--primary)'}; margin-top: 4px;">
+                ${profile.totalPoints}分
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+    
+    // 获取最近使用的玩家名字（从最近一次练习成绩中获取）
+    const recentScore = await db.practiceScores
+      .orderBy('createdAt')
+      .reverse()
+      .first();
+    
+    const playerName = recentScore ? recentScore.playerName : (allProfiles.length > 0 ? allProfiles[0].playerName : '未登录');
+    
+    // 获取玩家档案
+    let profile = null;
+    if (playerName !== '未登录') {
+      profile = await getPlayerProfile(playerName);
+    }
+    
+    // 更新玩家信息
+    document.getElementById('profile-player-name').textContent = playerName;
+    
+    if (profile) {
+      const levelInfo = LEVEL_SYSTEM.levels.find(l => l.id === profile.level);
+      document.getElementById('profile-level-icon').textContent = levelInfo.icon;
+      document.getElementById('profile-level-name').textContent = levelInfo.name;
+      document.getElementById('profile-total-points').textContent = profile.totalPoints;
+      
+      // 更新总积分区域的等级显示
+      document.getElementById('profile-total-level-icon').textContent = levelInfo.icon;
+      document.getElementById('profile-total-level-name').textContent = levelInfo.name;
+      
+      // 更新等级进度条
+      const progress = getLevelProgress(profile.totalPoints, levelInfo);
+      document.getElementById('profile-level-progress-bar').style.width = `${progress}%`;
+      
+      if (levelInfo.maxPoints === Infinity) {
+        document.getElementById('profile-level-progress-text').textContent = 'MAX';
+      } else {
+        document.getElementById('profile-level-progress-text').textContent = `${profile.totalPoints}/${levelInfo.maxPoints}`;
+      }
+      
+      // 显示头像
+      this.displayProfileAvatar(profile.avatar);
+    } else {
+      document.getElementById('profile-level-icon').textContent = '🥉';
+      document.getElementById('profile-level-name').textContent = '倔强青铜';
+      document.getElementById('profile-total-points').textContent = '0';
+      document.getElementById('profile-total-level-icon').textContent = '🥉';
+      document.getElementById('profile-total-level-name').textContent = '倔强青铜';
+      document.getElementById('profile-level-progress-bar').style.width = '0%';
+      document.getElementById('profile-level-progress-text').textContent = '0/500';
+      this.displayProfileAvatar(null);
+    }
+    
+    // 统计个人数据
+    if (playerName !== '未登录') {
+      const allScores = await db.practiceScores
+        .where('playerName')
+        .equals(playerName)
+        .toArray();
+      
+      const totalPractices = allScores.length;
+      const totalWords = allScores.reduce((sum, score) => sum + score.wordCount, 0);
+      const totalCorrect = allScores.reduce((sum, score) => sum + score.correctCount, 0);
+      const accuracy = totalWords > 0 ? Math.round((totalCorrect / totalWords) * 100) : 0;
+      
+      document.getElementById('profile-total-practices').textContent = totalPractices;
+      document.getElementById('profile-total-words').textContent = totalWords;
+      document.getElementById('profile-total-correct').textContent = totalCorrect;
+      document.getElementById('profile-accuracy').textContent = `${accuracy}%`;
+      
+      // 显示最近练习记录
+      await this.renderProfileRecentPractices(playerName);
+    } else {
+      document.getElementById('profile-total-practices').textContent = '0';
+      document.getElementById('profile-total-words').textContent = '0';
+      document.getElementById('profile-total-correct').textContent = '0';
+      document.getElementById('profile-accuracy').textContent = '0%';
+      document.getElementById('profile-recent-practices-card').style.display = 'none';
+    }
+  },
+
+  // 切换角色
+  async switchProfile(playerName) {
+    // 获取玩家档案
+    const profile = await getPlayerProfile(playerName);
+    
+    if (!profile) return;
+    
+    const levelInfo = LEVEL_SYSTEM.levels.find(l => l.id === profile.level);
+    
+    // 更新玩家信息
+    document.getElementById('profile-player-name').textContent = playerName;
+    document.getElementById('profile-level-icon').textContent = levelInfo.icon;
+    document.getElementById('profile-level-name').textContent = levelInfo.name;
+    document.getElementById('profile-total-points').textContent = profile.totalPoints;
+    
+    // 更新总积分区域的等级显示
+    document.getElementById('profile-total-level-icon').textContent = levelInfo.icon;
+    document.getElementById('profile-total-level-name').textContent = levelInfo.name;
+    
+    // 更新等级进度条
+    const progress = getLevelProgress(profile.totalPoints, levelInfo);
+    document.getElementById('profile-level-progress-bar').style.width = `${progress}%`;
+    
+    if (levelInfo.maxPoints === Infinity) {
+      document.getElementById('profile-level-progress-text').textContent = 'MAX';
+    } else {
+      document.getElementById('profile-level-progress-text').textContent = `${profile.totalPoints}/${levelInfo.maxPoints}`;
+    }
+    
+    // 显示头像
+    this.displayProfileAvatar(profile.avatar);
+    
+    // 统计个人数据
+    const allScores = await db.practiceScores
+      .where('playerName')
+      .equals(playerName)
+      .toArray();
+    
+    const totalPractices = allScores.length;
+    const totalWords = allScores.reduce((sum, score) => sum + score.wordCount, 0);
+    const totalCorrect = allScores.reduce((sum, score) => sum + score.correctCount, 0);
+    const accuracy = totalWords > 0 ? Math.round((totalCorrect / totalWords) * 100) : 0;
+    
+    document.getElementById('profile-total-practices').textContent = totalPractices;
+    document.getElementById('profile-total-words').textContent = totalWords;
+    document.getElementById('profile-total-correct').textContent = totalCorrect;
+    document.getElementById('profile-accuracy').textContent = `${accuracy}%`;
+    
+    // 显示最近练习记录
+    await this.renderProfileRecentPractices(playerName);
+    
+    // 更新角色选择器的高亮状态
+    const selectorContainer = document.getElementById('profile-character-selector');
+    const roleCards = selectorContainer.querySelectorAll('div[onclick^="app.switchProfile"]');
+    roleCards.forEach(card => {
+      const cardPlayerName = card.getAttribute('onclick').match(/'([^']+)'/)[1];
+      const isSelected = cardPlayerName === playerName;
+      card.style.background = isSelected ? 'var(--primary)' : 'var(--bg-secondary)';
+      card.style.borderColor = isSelected ? 'var(--primary)' : 'var(--border)';
+      
+      const nameDiv = card.querySelector('div:nth-child(2)');
+      const levelDiv = card.querySelector('div:nth-child(3)');
+      const pointsDiv = card.querySelector('div:nth-child(4)');
+      
+      if (nameDiv) {
+        nameDiv.style.color = isSelected ? 'white' : 'var(--text-primary)';
+      }
+      if (levelDiv) {
+        levelDiv.style.color = isSelected ? 'rgba(255,255,255,0.8)' : 'var(--text-muted)';
+      }
+      if (pointsDiv) {
+        pointsDiv.style.color = isSelected ? 'white' : 'var(--primary)';
+      }
+    });
+  },
+
+  // 渲染最近练习记录
+  async renderProfileRecentPractices(playerName) {
+    const container = document.getElementById('profile-recent-practices');
+    const card = document.getElementById('profile-recent-practices-card');
+    
+    if (!container || !card) return;
+    
+    const recentScores = await db.practiceScores
+      .where('playerName')
+      .equals(playerName)
+      .reverse()
+      .limit(5)
+      .toArray();
+    
+    if (recentScores.length === 0) {
+      card.style.display = 'none';
+      return;
+    }
+    
+    card.style.display = 'block';
+    
+    container.innerHTML = recentScores.map((score, index) => {
+      const date = new Date(score.createdAt).toLocaleString('zh-CN');
+      // 修复：避免除以 0 导致 Infinity
+      const accuracy = score.wordCount > 0 
+        ? Math.round((score.correctCount / score.wordCount) * 100) 
+        : 0;
+      const mode = score.mode === 'sentence' ? '句子填空' : '拼写练习';
+      
+      return `
+        <div style="display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--bg-tertiary); border-radius: var(--radius); border: 1px solid var(--border);">
+          <div style="width: 40px; height: 40px; background: var(--primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 16px; flex-shrink: 0;">
+            ${score.totalScore}
+          </div>
+          <div style="flex: 1;">
+            <div style="font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 2px;">
+              ${mode} · ${score.wordCount}词
+            </div>
+            <div style="font-size: 11px; color: var(--text-muted);">
+              ${date} · 正确率${accuracy}%
+            </div>
+          </div>
+          <div style="font-size: 20px; font-weight: 700; color: var(--primary);">
+            ${score.totalScore >= 100 ? '🏆' : score.totalScore >= 50 ? '⭐' : '✨'}
+          </div>
+        </div>
+      `;
+    }).join('');
+  },
+
+  // 删除当前角色
+  async deleteCurrentProfile() {
+    const playerName = document.getElementById('profile-player-name').textContent;
+    
+    if (playerName === '未登录') {
+      this.showToast('没有可删除的角色', 'error');
+      return;
+    }
+    
+    // 确认删除
+    if (!confirm(`确定要删除角色"${playerName}"吗？\n\n删除后将清除：\n- 该角色的所有积分和等级\n- 该角色的所有练习记录\n\n此操作不可恢复！`)) {
+      return;
+    }
+    
+    try {
+      // 删除玩家档案
+      const profile = await getPlayerProfile(playerName);
+      if (profile) {
+        await db.playerProfiles.delete(profile.id);
+      }
+      
+      // 删除该玩家的所有练习成绩
+      const scores = await db.practiceScores
+        .where('playerName')
+        .equals(playerName)
+        .toArray();
+      
+      for (const score of scores) {
+        await db.practiceScores.delete(score.id);
+      }
+      
+      this.showToast(`角色"${playerName}"已删除`, 'success');
+      
+      // 重新渲染个人中心页面
+      await this.renderProfile();
+      
+      // 如果排行榜页面可见，也刷新排行榜
+      if (state.currentPage === 'stats') {
+        await this.renderPracticeScores();
+      }
+    } catch (error) {
+      console.error('删除角色失败:', error);
+      this.showToast('删除失败，请重试', 'error');
+    }
+  },
+
+  // 处理头像上传
+  async handleProfileAvatarUpload(input) {
+    const file = input.files[0];
+    if (!file) return;
+    
+    // 检查文件类型
+    if (!file.type.startsWith('image/')) {
+      this.showToast('请选择图片文件', 'error');
+      return;
+    }
+    
+    // 检查文件大小（限制 5MB）
+    if (file.size > 5 * 1024 * 1024) {
+      this.showToast('图片大小不能超过 5MB', 'error');
+      return;
+    }
+    
+    try {
+      // 读取图片文件
+      const imageData = await this.readFileAsDataURL(file);
+      
+      // 获取当前玩家名字
+      const playerName = document.getElementById('profile-player-name').textContent;
+      if (playerName === '未登录') {
+        this.showToast('请先保存成绩创建角色', 'error');
+        return;
+      }
+      
+      // 保存到数据库
+      const profile = await getPlayerProfile(playerName);
+      if (profile) {
+        await db.playerProfiles.update(profile.id, {
+          avatar: imageData
+        });
+      } else {
+        // 如果 profile 不存在，创建一个
+        const level = calculateLevel(0);
+        const newProfile = {
+          playerName: playerName,
+          totalPoints: 0,
+          level: level.id,
+          avatar: imageData,
+          lastPlayedAt: Date.now()
+        };
+        await db.playerProfiles.add(newProfile);
+      }
+      
+      // 更新头像显示
+      this.displayProfileAvatar(imageData);
+      
+      this.showToast('头像已更新', 'success');
+    } catch (error) {
+      console.error('头像上传失败:', error);
+      this.showToast('上传失败，请重试', 'error');
+    }
+    
+    // 清空 input，允许重复上传同一文件
+    input.value = '';
+  },
+
+  // 读取文件为 DataURL
+  readFileAsDataURL(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+  },
+
+  // 显示头像
+  displayProfileAvatar(imageData) {
+    const avatarImage = document.getElementById('profile-avatar-image');
+    const avatarDefault = document.getElementById('profile-avatar-default');
+    
+    if (imageData) {
+      avatarImage.src = imageData;
+      avatarImage.style.display = 'block';
+      avatarDefault.style.display = 'none';
+    } else {
+      avatarImage.style.display = 'none';
+      avatarDefault.style.display = 'block';
+    }
+  },
+
+  // 渲染练习成绩列表（排行榜）
   async renderPracticeScores() {
     const container = document.getElementById('practice-scores-list');
     if (!container) return;
 
-    // 获取所有成绩，按分数降序排列
-    const scores = await db.practiceScores
-      .orderBy('totalScore')
+    // 获取所有玩家档案，按总积分降序排列
+    const profiles = await db.playerProfiles
+      .orderBy('totalPoints')
       .reverse()
-      .limit(20)
       .toArray();
 
-    if (scores.length === 0) {
+    if (profiles.length === 0) {
       container.innerHTML = `
         <div class="empty-state">
           <div class="empty-icon">🏆</div>
-          <div class="empty-title">暂无成绩记录</div>
-          <div class="empty-subtitle">完成练习后成绩将显示在这里</div>
+          <div class="empty-title">暂无排行榜数据</div>
+          <div class="empty-subtitle">完成练习并保存成绩后将显示在这里</div>
         </div>
       `;
       return;
     }
 
-    // 按分数分组显示
-    const sortedScores = scores.sort((a, b) => b.totalScore - a.totalScore);
-    
     container.innerHTML = `
       <div style="display: flex; flex-direction: column; gap: 8px;">
-        ${sortedScores.map((score, index) => {
+        ${profiles.map((profile, index) => {
           const rank = index + 1;
           let rankBadge = '';
           if (rank === 1) rankBadge = '🥇';
@@ -2649,17 +3181,24 @@ ${text}`;
           else if (rank === 3) rankBadge = '🥉';
           else rankBadge = `<span style="color: var(--text-muted); font-weight: 600;">#${rank}</span>`;
           
-          const date = new Date(score.createdAt).toLocaleDateString('zh-CN');
-          const accuracy = Math.round((score.correctCount / score.wordCount) * 100);
+          const levelInfo = LEVEL_SYSTEM.levels.find(l => l.id === profile.level);
+          const lastPlayed = new Date(profile.lastPlayedAt).toLocaleDateString('zh-CN');
           
           return `
             <div style="display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--bg-tertiary); border-radius: var(--radius); border: 1px solid var(--border);">
               <div style="font-size: 24px; min-width: 36px; text-align: center;">${rankBadge}</div>
               <div style="flex: 1;">
-                <div style="font-weight: 600; color: var(--text-primary); font-size: 16px;">${score.playerName}</div>
-                <div style="font-size: 12px; color: var(--text-muted);">${date} · ${score.wordCount}词 · 正确率${accuracy}%</div>
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                  <span style="font-weight: 600; color: var(--text-primary); font-size: 16px;">${profile.playerName}</span>
+                  <span style="font-size: 14px;">${levelInfo.icon}</span>
+                  <span style="font-size: 11px; color: var(--text-muted); padding: 2px 6px; background: var(--bg-secondary); border-radius: 4px;">${levelInfo.name}</span>
+                </div>
+                <div style="font-size: 12px; color: var(--text-muted);">上次练习：${lastPlayed}</div>
               </div>
-              <div style="font-size: 24px; font-weight: 700; color: var(--primary);">${score.totalScore}</div>
+              <div style="text-align: right;">
+                <div style="font-size: 24px; font-weight: 700; color: var(--primary);">${profile.totalPoints}</div>
+                <div style="font-size: 10px; color: var(--text-muted);">总积分</div>
+              </div>
             </div>
           `;
         }).join('')}
@@ -3816,6 +4355,12 @@ ${wordList}
       return;
     }
 
+    // 验证：单词数必须大于 0 才能保存成绩
+    if (state.sentenceTotalWords <= 0) {
+      this.showToast('练习数据无效，无法保存成绩', 'error');
+      return;
+    }
+
     const now = Date.now();
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -3834,6 +4379,23 @@ ${wordList}
       date: today.getTime(),
       completedAt: now
     });
+
+    // 更新玩家档案，累加积分
+    const oldProfile = await getPlayerProfile(playerName);
+    const newProfile = await updatePlayerProfile(playerName, state.sentencePracticeScore);
+    
+    // 检查是否升级
+    let leveledUp = false;
+    let newLevelInfo = null;
+    if (oldProfile) {
+      const oldLevel = LEVEL_SYSTEM.levels.find(l => l.id === oldProfile.level);
+      newLevelInfo = LEVEL_SYSTEM.levels.find(l => l.id === newProfile.level);
+      if (newProfile.level > oldProfile.level) {
+        leveledUp = true;
+        this.showToast(`恭喜升级！${newLevelInfo.name}`, 'success');
+        this.triggerFireworks(8);
+      }
+    }
 
     this.closeSentencePracticeCompleteModal();
     this.endSentencePractice();
