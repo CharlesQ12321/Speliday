@@ -3279,12 +3279,24 @@ ${text}`;
     // 获取练习成绩
     const scores = await db.practiceScores.toArray();
     
+    // 获取玩家档案（角色数据），排除头像
+    const profiles = await db.playerProfiles.toArray();
+    const sanitizedProfiles = profiles.map(profile => ({
+      id: profile.id,
+      playerName: profile.playerName,
+      totalPoints: profile.totalPoints,
+      level: profile.level,
+      levelName: profile.levelName,
+      lastPlayedAt: profile.lastPlayedAt
+    }));
+    
     const data = {
       words: sanitizedWords,
       books: sanitizedBooks,
       practiceScores: scores,
+      playerProfiles: sanitizedProfiles,
       exportDate: new Date().toISOString(),
-      version: '1.2'
+      version: '1.3'
     };
     
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -3299,7 +3311,14 @@ ${text}`;
   },
 
   importData() {
-    document.getElementById('import-file').click();
+    this.triggerImport();
+  },
+
+  triggerImport() {
+    const fileInput = document.getElementById('import-file');
+    if (fileInput) {
+      fileInput.click();
+    }
   },
 
   async handleImport(input) {
@@ -3314,15 +3333,31 @@ ${text}`;
         throw new Error('无效的数据格式');
       }
       
+      // Count profiles if available
+      const profileCount = data.playerProfiles ? data.playerProfiles.length : 0;
+      const confirmMsg = profileCount > 0
+        ? `确定要导入 ${data.words.length} 个单词和 ${profileCount} 个角色数据吗？这将覆盖现有数据。`
+        : `确定要导入 ${data.words.length} 个单词吗？这将覆盖现有数据。`;
+      
       // Confirm
-      if (!confirm(`确定要导入 ${data.words.length} 个单词吗？这将覆盖现有数据。`)) {
+      if (!confirm(confirmMsg)) {
         return;
+      }
+      
+      // 保存现有角色头像
+      const existingProfiles = await db.playerProfiles.toArray();
+      const avatarMap = {};
+      for (const profile of existingProfiles) {
+        if (profile.avatar) {
+          avatarMap[profile.playerName] = profile.avatar;
+        }
       }
       
       // Clear existing data
       await db.words.clear();
       await db.books.clear();
       await db.practiceScores.clear();
+      await db.playerProfiles.clear();
       
       // Import books
       if (data.books) {
@@ -3343,11 +3378,25 @@ ${text}`;
         }
       }
       
+      // Import player profiles (角色数据和排行榜)，恢复头像
+      if (data.playerProfiles) {
+        for (const profile of data.playerProfiles) {
+          const profileData = { ...profile };
+          // 恢复该角色的头像（如果存在）
+          if (avatarMap[profile.playerName]) {
+            profileData.avatar = avatarMap[profile.playerName];
+          }
+          await db.playerProfiles.add(profileData);
+        }
+      }
+      
       await this.loadBooks();
       await this.loadWords();
       this.updateStats();
       this.renderRecentWords();
       this.renderBookTabs();
+      this.renderStats();
+      this.renderProfile();
       
       this.showToast('数据导入成功', 'success');
     } catch (error) {
@@ -3372,6 +3421,14 @@ ${text}`;
 
   closeApiSettings() {
     document.getElementById('api-modal').classList.remove('active');
+  },
+
+  openDataModal() {
+    document.getElementById('data-modal').classList.add('active');
+  },
+
+  closeDataModal() {
+    document.getElementById('data-modal').classList.remove('active');
   },
 
   async saveApiSettings() {
@@ -3477,6 +3534,11 @@ ${text}`;
     ).join('');
   },
 
+  renderBookTabs() {
+    this.updateFilterBookSelect();
+    this.updateBookDatalist();
+  },
+
   async deleteBookFromInput() {
     const name = document.getElementById('new-book-input').value.trim();
     if (!name) {
@@ -3562,13 +3624,31 @@ ${text}`;
   },
 
   async clearAllData() {
-    if (!confirm('确定要清除所有数据吗？此操作不可恢复！')) return;
-    if (!confirm('再次确认：所有单词和练习记录将被删除！')) return;
+    if (!confirm('确定要清除所有数据吗？此操作不可恢复！\n\n将清除：单词、单词本、练习记录、角色积分和等级\n将保留：角色头像')) return;
+    if (!confirm('再次确认：所有数据将被删除（头像除外）！')) return;
     
     await db.words.clear();
     await db.books.clear();
     await db.practiceScores.clear();
     await db.dailyPracticeSessions.clear();
+    
+    // 清除角色数据但保留头像
+    const profiles = await db.playerProfiles.toArray();
+    for (const profile of profiles) {
+      if (profile.avatar) {
+        // 保留有头像的角色，只清除其他数据
+        await db.playerProfiles.update(profile.id, {
+          totalPoints: 0,
+          level: 1,
+          levelName: '倔强青铜',
+          lastPlayedAt: null
+        });
+      } else {
+        // 没有头像的角色直接删除
+        await db.playerProfiles.delete(profile.id);
+      }
+    }
+    
     await this.initDatabase();
     await this.loadBooks();
     await this.loadWords();
@@ -3578,6 +3658,7 @@ ${text}`;
     this.renderBookTabs();
     this.renderLibrary();
     this.renderStats();
+    this.renderProfile();
     
     this.showToast('所有数据已清除', 'success');
   },

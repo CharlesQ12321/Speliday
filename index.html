@@ -2058,110 +2058,155 @@
           <span>设置</span>
         </div>
 
-        <!-- 设置选项 -->
-        <div style="display: flex; flex-direction: column; gap: 16px;">
-          <!-- 高频错词设置 -->
-          <div>
-            <h2 class="card-title" style="text-transform: none; font-size: 14px; margin-bottom: 10px;">
-              <i class="fa fa-exclamation-triangle" style="color: var(--error);"></i>
-              高频错词设置
-            </h2>
-            <div style="background: var(--bg-secondary); border-radius: var(--radius); border: 1px solid var(--border); padding: 16px;">
-              <div style="margin-bottom: 16px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                  <label style="font-size: 14px; color: var(--text-primary); font-weight: 500;">最少练习次数</label>
-                  <span id="min-practice-display" style="font-size: 14px; color: var(--primary); font-weight: 600;">5 次</span>
-                </div>
-                <input type="range" id="min-practice-count" min="1" max="20" value="5" 
-                       style="width: 100%; cursor: pointer;"
-                       oninput="app.updateHighErrorSettingDisplay('min-practice-count', 'min-practice-display', ' 次')">
-                <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
-                  单词练习次数达到此值后才开始计算正确率
-                </p>
+        <!-- AI 识别服务 -->
+        <div style="margin-bottom: 20px;">
+          <div class="card-title" style="margin-bottom: 10px;">
+            <i class="fa fa-magic" style="color: var(--primary);"></i>
+            AI 服务
+          </div>
+          <div class="card" style="padding: 0; overflow: hidden;">
+            <div class="setting-item" onclick="app.openApiSettings()" style="cursor: pointer; padding: 14px 16px; border-bottom: 1px solid var(--border);">
+              <div class="setting-info">
+                <div class="setting-label">AI 识别服务</div>
+                <div class="setting-desc">智谱AI GLM-4.6V-Flash (已配置)</div>
               </div>
-
-              <div style="margin-bottom: 16px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                  <label style="font-size: 14px; color: var(--text-primary); font-weight: 500;">正确率阈值</label>
-                  <span id="accuracy-threshold-display" style="font-size: 14px; color: var(--primary); font-weight: 600;">60%</span>
-                </div>
-                <input type="range" id="accuracy-threshold" min="10" max="90" value="60" 
-                       style="width: 100%; cursor: pointer;"
-                       oninput="app.updateHighErrorSettingDisplay('accuracy-threshold', 'accuracy-threshold-display', '%')">
-                <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
-                  正确率低于此值且错误次数达标时标记为高频错词
-                </p>
-              </div>
-
-              <div>
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                  <label style="font-size: 14px; color: var(--text-primary); font-weight: 500;">错误次数阈值</label>
-                  <span id="error-count-display" style="font-size: 14px; color: var(--primary); font-weight: 600;">3 次</span>
-                </div>
-                <input type="range" id="error-count-threshold" min="1" max="10" value="3" 
-                       style="width: 100%; cursor: pointer;"
-                       oninput="app.updateHighErrorSettingDisplay('error-count-threshold', 'error-count-display', ' 次')">
-                <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
-                  错误次数达到此值且正确率低于阈值时标记为高频错词
-                </p>
-              </div>
-
-              <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border);">
-                <button class="btn btn-primary" onclick="app.saveHighErrorSettings()" style="width: 100%;">
-                  <i class="fa fa-save"></i> 保存设置
-                </button>
-              </div>
+              <i class="fa fa-chevron-right" style="color: var(--text-muted); font-size: 12px;"></i>
             </div>
           </div>
+        </div>
 
-          <!-- 数据管理 -->
-          <div>
-            <h2 class="card-title" style="text-transform: none; font-size: 14px; margin-bottom: 10px;">数据管理</h2>
-            <div style="display: flex; flex-direction: column; gap: 8px;">
-              <button class="btn btn-secondary" onclick="app.exportData()" style="justify-content: space-between;">
-                <span>导出数据</span>
-                <i class="fa fa-arrow-right"></i>
-              </button>
-              <button class="btn btn-secondary" onclick="app.importData()" style="justify-content: space-between;">
-                <span>导入数据</span>
-                <i class="fa fa-arrow-right"></i>
-              </button>
-              <input type="file" id="import-file" accept=".json" onchange="app.handleImport(this)" style="display: none;">
-              <button class="btn btn-danger" onclick="app.clearAllData()" style="justify-content: space-between;">
-                <span>清除数据</span>
-                <i class="fa fa-arrow-right"></i>
-              </button>
-            </div>
+        <!-- 高频错词设置 -->
+        <div style="margin-bottom: 20px;">
+          <div class="card-title" style="margin-bottom: 10px;">
+            <i class="fa fa-exclamation-triangle" style="color: var(--error);"></i>
+            高频错词设置
           </div>
-          
-          <!-- 关于 -->
-          <div>
-            <h2 class="card-title" style="text-transform: none; font-size: 14px; margin-bottom: 10px;">关于</h2>
-            <div style="display: flex; flex-direction: column; gap: 8px;">
-              <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: var(--bg-tertiary); border-radius: var(--radius); border: 1px solid var(--border);">
-                <span style="font-size: 14px; color: var(--text-primary);">版本</span>
-                <span style="font-size: 14px; color: var(--text-secondary);">1.0.0</span>
+          <div style="background: var(--bg-secondary); border-radius: var(--radius-lg); border: 1px solid var(--border); padding: 16px;">
+            <div style="margin-bottom: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <label style="font-size: 14px; color: var(--text-primary); font-weight: 500;">最少练习次数</label>
+                <span id="min-practice-display" style="font-size: 14px; color: var(--primary); font-weight: 600;">5 次</span>
               </div>
-              <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: var(--bg-tertiary); border-radius: var(--radius); border: 1px solid var(--border);">
-                <span style="font-size: 14px; color: var(--text-primary);">开发者</span>
-                <span style="font-size: 14px; color: var(--text-secondary);">Speliday Team</span>
-              </div>
-            </div>
-          </div>
-          
-          <!-- 数据存储提示 -->
-          <div style="padding: 12px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: var(--radius);">
-            <div style="display: flex; align-items: flex-start; gap: 8px;">
-              <i class="fa fa-info-circle" style="color: var(--warning); margin-top: 2px;"></i>
-              <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.5;">
-                提示：本应用的数据目前都存储在本地，清除浏览器数据会导致应用中的数据丢失。建议通过导入导出功能进行数据备份。
+              <input type="range" id="min-practice-count" min="1" max="20" value="5" 
+                     style="width: 100%; cursor: pointer;"
+                     oninput="app.updateHighErrorSettingDisplay('min-practice-count', 'min-practice-display', ' 次')">
+              <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                单词练习次数达到此值后才开始计算正确率
               </p>
+            </div>
+
+            <div style="margin-bottom: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <label style="font-size: 14px; color: var(--text-primary); font-weight: 500;">正确率阈值</label>
+                <span id="accuracy-threshold-display" style="font-size: 14px; color: var(--primary); font-weight: 600;">60%</span>
+              </div>
+              <input type="range" id="accuracy-threshold" min="10" max="90" value="60" 
+                     style="width: 100%; cursor: pointer;"
+                     oninput="app.updateHighErrorSettingDisplay('accuracy-threshold', 'accuracy-threshold-display', '%')">
+              <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                正确率低于此值且错误次数达标时标记为高频错词
+              </p>
+            </div>
+
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <label style="font-size: 14px; color: var(--text-primary); font-weight: 500;">错误次数阈值</label>
+                <span id="error-count-display" style="font-size: 14px; color: var(--primary); font-weight: 600;">3 次</span>
+              </div>
+              <input type="range" id="error-count-threshold" min="1" max="10" value="3" 
+                     style="width: 100%; cursor: pointer;"
+                     oninput="app.updateHighErrorSettingDisplay('error-count-threshold', 'error-count-display', ' 次')">
+              <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                错误次数达到此值且正确率低于阈值时标记为高频错词
+              </p>
+            </div>
+
+            <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border);">
+              <button class="btn btn-primary" onclick="app.saveHighErrorSettings()" style="width: 100%;">
+                <i class="fa fa-save"></i> 保存设置
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 单词本管理 -->
+        <div style="margin-bottom: 20px;">
+          <div class="card-title" style="margin-bottom: 10px;">
+            <i class="fa fa-book" style="color: var(--accent);"></i>
+            单词本管理
+          </div>
+          <div class="card" style="padding: 0; overflow: hidden;">
+            <div class="setting-item" onclick="app.manageBooks()" style="cursor: pointer; padding: 14px 16px; border-bottom: 1px solid var(--border);">
+              <div class="setting-info">
+                <div class="setting-label">管理单词本</div>
+                <div class="setting-desc">创建、重命名或删除单词本</div>
+              </div>
+              <i class="fa fa-chevron-right" style="color: var(--text-muted); font-size: 12px;"></i>
+            </div>
+          </div>
+        </div>
+
+        <!-- 数据管理 -->
+        <div style="margin-bottom: 20px;">
+          <div class="card-title" style="margin-bottom: 10px;">
+            <i class="fa fa-database" style="color: var(--warning);"></i>
+            数据管理
+          </div>
+          <div class="card" style="padding: 0; overflow: hidden;">
+            <div class="setting-item" onclick="app.openDataModal()" style="cursor: pointer; padding: 14px 16px; border-bottom: 1px solid var(--border);">
+              <div class="setting-info">
+                <div class="setting-label">导入/导出数据</div>
+                <div class="setting-desc">备份或恢复单词本数据</div>
+              </div>
+              <i class="fa fa-chevron-right" style="color: var(--text-muted); font-size: 12px;"></i>
+            </div>
+            <div class="setting-item" onclick="app.clearAllData()" style="cursor: pointer; padding: 14px 16px;">
+              <div class="setting-info">
+                <div class="setting-label" style="color: var(--error);">清除所有数据</div>
+                <div class="setting-desc">删除所有单词和练习记录</div>
+              </div>
+              <i class="fa fa-trash" style="color: var(--error); font-size: 14px;"></i>
             </div>
           </div>
         </div>
         
-        <!-- 底部占位区域 -->
-        <div style="height: 100px;"></div>
+        <!-- 关于 -->
+        <div style="margin-bottom: 20px;">
+          <div class="card-title" style="margin-bottom: 10px;">
+            <i class="fa fa-info-circle" style="color: var(--text-muted);"></i>
+            关于
+          </div>
+          <div class="card" style="padding: 0; overflow: hidden;">
+            <div class="setting-item" style="padding: 14px 16px; border-bottom: 1px solid var(--border);">
+              <div class="setting-info">
+                <div class="setting-label">版本</div>
+              </div>
+              <span style="font-size: 14px; color: var(--text-secondary);">1.0.0</span>
+            </div>
+            <div class="setting-item" style="padding: 14px 16px; border-bottom: 1px solid var(--border);">
+              <div class="setting-info">
+                <div class="setting-label">开发者</div>
+              </div>
+              <span style="font-size: 14px; color: var(--text-secondary);">Speliday Team</span>
+            </div>
+            <div class="setting-item" style="padding: 14px 16px;">
+              <div class="setting-info">
+                <div class="setting-label">技术支持</div>
+              </div>
+              <span style="font-size: 14px; color: var(--text-secondary);">智谱AI</span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 数据存储提示 -->
+        <div style="padding: 12px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: var(--radius); margin-bottom: 100px;">
+          <div style="display: flex; align-items: flex-start; gap: 8px;">
+            <i class="fa fa-info-circle" style="color: var(--warning); margin-top: 2px;"></i>
+            <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin: 0;">
+              提示：本应用的数据目前都存储在本地，清除浏览器数据会导致应用中的数据丢失。建议通过导入导出功能进行数据备份。
+            </p>
+          </div>
+        </div>
       </div>
     </main>
 
@@ -2179,13 +2224,17 @@
         <i class="fa fa-pencil"></i>
         <span class="nav-label">练习</span>
       </button>
+      <button class="nav-item" onclick="app.navigate('stats')">
+        <i class="fa fa-bar-chart"></i>
+        <span class="nav-label">排行</span>
+      </button>
       <button class="nav-item" onclick="app.navigate('profile')">
         <i class="fa fa-user"></i>
         <span class="nav-label">我的</span>
       </button>
-      <button class="nav-item" onclick="app.navigate('stats')">
-        <i class="fa fa-bar-chart"></i>
-        <span class="nav-label">排行</span>
+      <button class="nav-item" onclick="app.navigate('settings')">
+        <i class="fa fa-cog"></i>
+        <span class="nav-label">设置</span>
       </button>
     </nav>
 
@@ -2581,6 +2630,49 @@
       <div class="spinner"></div>
       <div class="loading-text" id="loading-text">正在识别...</div>
     </div>
+
+    <!-- Data Import/Export Modal -->
+    <div class="modal-overlay" id="data-modal" onclick="if(event.target===this)app.closeDataModal()">
+      <div class="modal" style="max-width: 420px;">
+        <div class="modal-header">
+          <div class="modal-title">数据导入导出</div>
+          <button class="modal-close" onclick="app.closeDataModal()">×</button>
+        </div>
+        <div class="modal-body">
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <button class="btn btn-primary btn-block" onclick="app.exportData()" style="padding: 16px; justify-content: flex-start; gap: 12px;">
+              <i class="fa fa-download" style="font-size: 20px;"></i>
+              <div style="text-align: left;">
+                <div style="font-weight: 600;">导出数据</div>
+                <div style="font-size: 12px; opacity: 0.8; font-weight: 400;">将单词本、练习成绩等数据备份到本地</div>
+              </div>
+            </button>
+            <button class="btn btn-secondary btn-block" onclick="app.triggerImport()" style="padding: 16px; justify-content: flex-start; gap: 12px;">
+              <i class="fa fa-upload" style="font-size: 20px;"></i>
+              <div style="text-align: left;">
+                <div style="font-weight: 600;">导入数据</div>
+                <div style="font-size: 12px; color: var(--text-muted);">从备份文件恢复数据（将覆盖现有数据）</div>
+              </div>
+            </button>
+          </div>
+          
+          <div style="margin-top: 16px; padding: 12px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: var(--radius);">
+            <div style="display: flex; align-items: flex-start; gap: 8px;">
+              <i class="fa fa-info-circle" style="color: var(--warning); margin-top: 2px;"></i>
+              <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.5;">
+                提示：数据存储在浏览器本地，清除浏览器数据会导致丢失。建议定期导出备份。
+              </p>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="app.closeDataModal()">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hidden import file input -->
+    <input type="file" id="import-file" accept=".json" onchange="app.handleImport(this)" style="display: none;">
 
     <!-- Toast -->
     <div class="toast" id="toast"></div>
