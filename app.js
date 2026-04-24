@@ -5,27 +5,486 @@
 
 // Database Setup
 const db = new Dexie('SnapWordsDB');
-db.version(8).stores({
+db.version(12).stores({
   words: '++id, word, translation, *bookIds, errorCount, correctCount, isReported, createdAt, lastPracticed',
   books: '++id, bookId, bookName, createdAt',
   settings: 'key, value',
   practiceScores: '++id, playerName, totalScore, wordCount, correctCount, createdAt',
   dailyPracticeSessions: '++id, date, completedAt',
-  playerProfiles: '++id, playerName, totalPoints, level, lastPlayedAt, avatar'
+  playerProfiles: '++id, playerName, totalPoints, level, lastPlayedAt, avatar',
+  // 斗罗大陆等级系统
+  playerSpiritPower: '++id, playerId, totalSpiritPower, currentTier, currentLevel, lastUpdated, isBreakthroughReady, breakthroughCompleted',
+  // 日常任务系统
+  dailyTasks: '++id, playerId, date, taskType, completed, reward',
+  // 副本任务系统
+  dungeonProgress: '++id, playerId, dungeonId, isBreakthrough, completedCount, lastPlayed'
 });
 
-// 等级系统配置 - 王者荣耀风格
-const LEVEL_SYSTEM = {
-  levels: [
-    { id: 1, name: '倔强青铜', icon: '🥉', color: '#CD7F32', minPoints: 0, maxPoints: 500 },
-    { id: 2, name: '秩序白银', icon: '🥈', color: '#C0C0C0', minPoints: 501, maxPoints: 1500 },
-    { id: 3, name: '荣耀黄金', icon: '🥇', color: '#FFD700', minPoints: 1501, maxPoints: 3000 },
-    { id: 4, name: '尊贵铂金', icon: '💎', color: '#E5E4E2', minPoints: 3001, maxPoints: 5000 },
-    { id: 5, name: '永恒钻石', icon: '💠', color: '#4169E1', minPoints: 5001, maxPoints: 8000 },
-    { id: 6, name: '至尊星耀', icon: '⭐', color: '#9370DB', minPoints: 8001, maxPoints: 12000 },
-    { id: 7, name: '最强王者', icon: '👑', color: '#FF4500', minPoints: 12001, maxPoints: Infinity }
+// 斗罗大陆等级系统配置 - 10 个大阶，100 个小级
+const SPIRIT_LEVEL_SYSTEM = {
+  tiers: [
+    {
+      id: 1,
+      name: '魂士',
+      icon: '🌱',
+      color: '#8B4513',
+      levels: 10,
+      spiritPowerPerLevel: 100,
+      cumulativeStart: 0,
+      titles: ['武魂觉醒', '初醒者', '凝魂者', '魂力初成', '魂士强者', '魂士巅峰', '准魂师', '半步魂师', '魂力圆满', '魂士极限']
+    },
+    {
+      id: 2,
+      name: '魂师',
+      icon: '⚔️',
+      color: '#4169E1',
+      levels: 10,
+      spiritPowerPerLevel: 300,
+      cumulativeStart: 1000,
+      titles: ['正式魂师', '初阶魂师', '中阶魂师', '高阶魂师', '魂师精英', '魂师强者', '魂师巅峰', '准大魂师', '半步大魂师', '魂师极限']
+    },
+    {
+      id: 3,
+      name: '大魂师',
+      icon: '🛡️',
+      color: '#32CD32',
+      levels: 10,
+      spiritPowerPerLevel: 800,
+      cumulativeStart: 4000,
+      titles: ['大魂师', '双环魂师', '三环预备者', '大魂师精英', '大魂师强者', '大魂师巅峰', '准魂尊', '半步魂尊', '大魂师圆满', '大魂师极限']
+    },
+    {
+      id: 4,
+      name: '魂尊',
+      icon: '👑',
+      color: '#FFD700',
+      levels: 10,
+      spiritPowerPerLevel: 2000,
+      cumulativeStart: 12000,
+      titles: ['魂尊', '三环魂尊', '尊阶强者', '魂尊精英', '魂尊强者', '魂尊巅峰', '准魂宗', '半步魂宗', '魂尊圆满', '魂尊极限']
+    },
+    {
+      id: 5,
+      name: '魂宗',
+      icon: '🏆',
+      color: '#FF4500',
+      levels: 10,
+      spiritPowerPerLevel: 5000,
+      cumulativeStart: 32000,
+      titles: ['魂宗', '四环魂宗', '宗派中坚', '魂宗精英', '魂宗强者', '魂宗巅峰', '准魂王', '半步魂王', '魂宗圆满', '魂宗极限']
+    },
+    {
+      id: 6,
+      name: '魂王',
+      icon: '🔥',
+      color: '#DC143C',
+      levels: 10,
+      spiritPowerPerLevel: 12000,
+      cumulativeStart: 82000,
+      titles: ['魂王', '五环魂王', '王阶统帅', '魂王精英', '魂王强者', '魂王巅峰', '准魂帝', '半步魂帝', '魂王圆满', '魂王极限']
+    },
+    {
+      id: 7,
+      name: '魂帝',
+      icon: '💎',
+      color: '#9370DB',
+      levels: 10,
+      spiritPowerPerLevel: 28000,
+      cumulativeStart: 202000,
+      titles: ['魂帝', '六环魂帝', '帝阶霸主', '魂帝精英', '魂帝强者', '魂帝巅峰', '准魂圣', '半步魂圣', '魂帝圆满', '魂帝极限']
+    },
+    {
+      id: 8,
+      name: '魂圣',
+      icon: '🌟',
+      color: '#00CED1',
+      levels: 10,
+      spiritPowerPerLevel: 60000,
+      cumulativeStart: 482000,
+      titles: ['魂圣', '武魂真身', '圣阶强者', '魂圣精英', '魂圣强者', '魂圣巅峰', '准魂斗罗', '半步魂斗罗', '魂圣圆满', '魂圣极限']
+    },
+    {
+      id: 9,
+      name: '魂斗罗',
+      icon: '🌠',
+      color: '#FF6347',
+      levels: 10,
+      spiritPowerPerLevel: 120000,
+      cumulativeStart: 1082000,
+      titles: ['魂斗罗', '八环斗罗', '斗罗长老', '魂斗罗精英', '魂斗罗强者', '魂斗罗巅峰', '准封号', '半步封号', '魂斗罗圆满', '魂斗罗极限']
+    },
+    {
+      id: 10,
+      name: '封号斗罗',
+      icon: '⭐',
+      color: '#FFD700',
+      levels: 10,
+      spiritPowerPerLevel: 300000,
+      cumulativeStart: 2282000,
+      titles: ['封号斗罗', '超级斗罗', '极限斗罗', '神级斗罗', '斗罗巅峰', '斗罗至尊', '斗罗传说', '斗罗神话', '斗罗永恒', '斗罗至高']
+    }
   ]
 };
+
+// 兼容旧代码的等级系统映射（自动从斗罗大陆系统生成 100 个小级）
+const LEVEL_SYSTEM = {
+  levels: SPIRIT_LEVEL_SYSTEM.tiers.flatMap(tier => {
+    const levels = [];
+    for (let i = 0; i < tier.levels; i++) {
+      const globalLevel = (tier.id - 1) * 10 + i + 1;
+      levels.push({
+        id: globalLevel,
+        name: tier.name,
+        icon: tier.icon,
+        color: tier.color,
+        minPoints: tier.cumulativeStart + i * tier.spiritPowerPerLevel,
+        maxPoints: tier.cumulativeStart + (i + 1) * tier.spiritPowerPerLevel
+      });
+    }
+    return levels;
+  })
+};
+
+// 日常任务系统配置
+const DAILY_TASK_CONFIG = {
+  cultivation: {
+    id: 'cultivation',
+    name: '武魂修炼',
+    description: '完成一次拼写练习',
+    icon: '⚔️',
+    baseReward: 100,
+    checkCompletion: (playerId) => db.dailyTasks.where({ playerId, date: getTodayStr(), taskType: 'cultivation', completed: true }).count()
+  },
+  wordTraining: {
+    id: 'wordTraining',
+    name: '单词训练',
+    description: '拼写 50 个单词',
+    icon: '📖',
+    baseReward: 100,
+    targetWords: 50
+  },
+  sentenceTraining: {
+    id: 'sentenceTraining',
+    name: '学院功课',
+    description: '完成一次句子填空',
+    icon: '📝',
+    baseReward: 100,
+    checkCompletion: (playerId) => db.dailyTasks.where({ playerId, date: getTodayStr(), taskType: 'sentenceTraining', completed: true }).count()
+  },
+  streak: {
+    id: 'streak',
+    name: '连击挑战',
+    description: '达成 10 连击',
+    icon: '🔥',
+    baseReward: 150,
+    targetCombo: 10
+  },
+  perfect: {
+    id: 'perfect',
+    name: '完美通关',
+    description: '一轮练习全对（≥20 词）',
+    icon: '💯',
+    baseReward: 200,
+    minWords: 20
+  }
+};
+
+// 获取今天日期字符串 YYYY-MM-DD
+function getTodayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// 获取等级系数
+function getTierRewardMultiplier(tierId) {
+  const multipliers = {
+    1: 1.0,   // 魂士
+    2: 1.5,   // 魂师
+    3: 2.0,   // 大魂师
+    4: 3.0,   // 魂尊
+    5: 5.0,   // 魂宗
+    6: 8.0,   // 魂王
+    7: 12.0,  // 魂帝
+    8: 18.0,  // 魂圣
+    9: 25.0,  // 魂斗罗
+    10: 35.0  // 封号斗罗
+  };
+  return multipliers[tierId] || 1.0;
+}
+
+// 获取今日魂力奖励（含等级系数）
+function getDailyTaskReward(taskId, tierId) {
+  const task = DAILY_TASK_CONFIG[taskId];
+  if (!task) return 0;
+  return Math.floor(task.baseReward * getTierRewardMultiplier(tierId));
+}
+
+// 日常任务系统函数
+async function initDailyTasks(playerId) {
+  const today = getTodayStr();
+  const existingTasks = await db.dailyTasks.where({ playerId, date: today }).toArray();
+  
+  if (existingTasks.length === 0) {
+    const tasks = Object.values(DAILY_TASK_CONFIG).map(task => ({
+      playerId,
+      date: today,
+      taskType: task.id,
+      completed: false,
+      reward: 0,
+      progress: 0
+    }));
+    await db.dailyTasks.bulkAdd(tasks);
+  }
+}
+
+async function getDailyTasks(playerId) {
+  const today = getTodayStr();
+  const tasks = await db.dailyTasks.where({ playerId, date: today }).toArray();
+  
+  const spiritInfo = await getPlayerSpiritInfoByPlayerId(playerId);
+  const tierId = spiritInfo ? spiritInfo.tierId : 1;
+  
+  return tasks.map(task => {
+    const config = DAILY_TASK_CONFIG[task.taskType];
+    return {
+      ...task,
+      name: config.name,
+      description: config.description,
+      icon: config.icon,
+      baseReward: config.baseReward,
+      reward: task.completed ? task.reward : getDailyTaskReward(task.taskType, tierId)
+    };
+  });
+}
+
+async function completeDailyTask(playerId, taskType) {
+  const today = getTodayStr();
+  const task = await db.dailyTasks.where({ playerId, date: today, taskType }).first();
+  if (!task || task.completed) return false;
+  
+  const spiritInfo = await getPlayerSpiritInfoByPlayerId(playerId);
+  const tierId = spiritInfo ? spiritInfo.tierId : 1;
+  const reward = getDailyTaskReward(taskType, tierId);
+  
+  await db.dailyTasks.update(task.id, {
+    completed: true,
+    reward: reward,
+    completedAt: Date.now()
+  });
+  
+  // 发放魂力奖励
+  const playerProfile = await db.playerProfiles.get(playerId);
+  if (playerProfile) {
+    await addSpiritPower(playerProfile.playerName, reward, `daily_${taskType}`);
+  }
+  
+  return { success: true, reward };
+}
+
+async function getPlayerSpiritInfoByPlayerId(playerId) {
+  const spiritProfile = await db.playerSpiritPower.where('playerId').equals(playerId).first();
+  if (!spiritProfile) return null;
+  // 使用突破状态计算等级
+  return calculateSpiritLevel(spiritProfile.totalSpiritPower, spiritProfile.breakthroughCompleted);
+}
+
+// 更新单词训练进度
+async function updateWordTrainingProgress(playerId, wordCount) {
+  const today = getTodayStr();
+  let task = await db.dailyTasks.where({ playerId, date: today, taskType: 'wordTraining' }).first();
+  if (!task) return;
+  
+  const newProgress = (task.progress || 0) + wordCount;
+  const target = DAILY_TASK_CONFIG.wordTraining.targetWords;
+  
+  if (newProgress >= target && !task.completed) {
+    await completeDailyTask(playerId, 'wordTraining');
+  } else {
+    await db.dailyTasks.update(task.id, { progress: newProgress });
+  }
+}
+
+// 副本任务系统配置
+const DUNGEONS = [
+  {
+    id: 'nuoding',
+    name: '诺丁学院',
+    unlockLevel: 11,
+    difficulty: 1,
+    pointsMultiplier: 1.2,
+    soulBoneDropRate: 0.50,
+    requirements: { mode: 'spelling', wordCount: 50, accuracyRequired: 0.65 },
+    description: '基础单词拼写，适合新手入门'
+  },
+  {
+    id: 'shilaik',
+    name: '史莱克学院',
+    unlockLevel: 21,
+    difficulty: 2,
+    pointsMultiplier: 1.5,
+    soulBoneDropRate: 0.55,
+    requirements: { mode: 'sentence', wordCount: 25, accuracyRequired: 0.68 },
+    description: '句子语境中的单词应用'
+  },
+  {
+    id: 'wuhun',
+    name: '武魂殿',
+    unlockLevel: 31,
+    difficulty: 3,
+    pointsMultiplier: 2.0,
+    soulBoneDropRate: 0.60,
+    requirements: { mode: 'spelling', wordCount: 60, accuracyRequired: 0.72 },
+    description: '词汇量要求提升'
+  },
+  {
+    id: 'xingdou',
+    name: '星斗大森林',
+    unlockLevel: 41,
+    difficulty: 4,
+    pointsMultiplier: 3.0,
+    soulBoneDropRate: 0.65,
+    requirements: { mode: 'sentence', wordCount: 30, accuracyRequired: 0.75 },
+    description: '长句填空，难度增加'
+  },
+  {
+    id: 'haotian',
+    name: '昊天宗',
+    unlockLevel: 51,
+    difficulty: 5,
+    pointsMultiplier: 5.0,
+    soulBoneDropRate: 0.70,
+    requirements: { mode: 'spelling', wordCount: 80, accuracyRequired: 0.78 },
+    description: '大量词汇挑战'
+  },
+  {
+    id: 'haisen',
+    name: '海神岛',
+    unlockLevel: 61,
+    difficulty: 6,
+    pointsMultiplier: 8.0,
+    soulBoneDropRate: 0.75,
+    requirements: { mode: 'sentence', wordCount: 35, accuracyRequired: 0.82 },
+    description: '高难度句子填空'
+  },
+  {
+    id: 'shalu',
+    name: '杀戮之都',
+    unlockLevel: 71,
+    difficulty: 7,
+    pointsMultiplier: 12.0,
+    soulBoneDropRate: 0.80,
+    requirements: { mode: 'spelling', wordCount: 100, accuracyRequired: 0.85 },
+    description: '极限词汇量挑战'
+  },
+  {
+    id: 'wuhun_city',
+    name: '武魂城',
+    unlockLevel: 81,
+    difficulty: 8,
+    pointsMultiplier: 18.0,
+    soulBoneDropRate: 0.85,
+    requirements: { mode: 'sentence', wordCount: 42, accuracyRequired: 0.88 },
+    description: '复杂语境应用'
+  },
+  {
+    id: 'shenjie',
+    name: '神界',
+    unlockLevel: 91,
+    difficulty: 9,
+    pointsMultiplier: 25.0,
+    soulBoneDropRate: 0.90,
+    requirements: { mode: 'spelling', wordCount: 120, accuracyRequired: 0.92 },
+    description: '神级挑战，可选择练习模式'
+  }
+];
+
+// 副本系统函数
+async function getDungeonProgress(playerId, dungeonId) {
+  let progress = await db.dungeonProgress.where({ playerId, dungeonId }).first();
+  if (!progress) {
+    const playerSpirit = await getPlayerSpiritInfoByPlayerId(playerId);
+    const playerLevel = playerSpirit ? playerSpirit.level : 1;
+    const dungeon = DUNGEONS.find(d => d.id === dungeonId);
+    const isBreakthrough = dungeon && playerLevel >= dungeon.unlockLevel;
+    
+    progress = {
+      playerId,
+      dungeonId,
+      isBreakthrough: isBreakthrough || false,
+      completedCount: 0,
+      lastPlayed: null,
+      todayCount: 0
+    };
+    await db.dungeonProgress.add(progress);
+  }
+  return progress;
+}
+
+async function getAllDungeons(playerId) {
+  const playerSpirit = await getPlayerSpiritInfoByPlayerId(playerId);
+  const playerLevel = playerSpirit ? playerSpirit.level : 1;
+  
+  const dungeons = DUNGEONS.map(dungeon => ({
+    ...dungeon,
+    isUnlocked: playerLevel >= dungeon.unlockLevel,
+    progress: null
+  }));
+  
+  for (let dungeon of dungeons) {
+    if (dungeon.isUnlocked) {
+      const progress = await getDungeonProgress(playerId, dungeon.id);
+      dungeon.progress = progress;
+      dungeon.todayCount = progress.todayCount || 0;
+    }
+  }
+  
+  return dungeons;
+}
+
+async function completeDungeon(playerId, dungeonId, success, practiceData) {
+  const progress = await getDungeonProgress(playerId, dungeonId);
+  const dungeon = DUNGEONS.find(d => d.id === dungeonId);
+  
+  const newTodayCount = (progress.todayCount || 0) + 1;
+  
+  if (success && practiceData && practiceData.accuracy >= dungeon.requirements.accuracyRequired) {
+    const basePoints = practiceData.score || 0;
+    const bonusPoints = Math.floor(basePoints * dungeon.pointsMultiplier);
+    
+    await db.dungeonProgress.update(progress.id, {
+      isBreakthrough: false,
+      completedCount: progress.completedCount + 1,
+      lastPlayed: Date.now(),
+      todayCount: newTodayCount
+    });
+    
+    const playerProfile = await db.playerProfiles.get(playerId);
+    if (playerProfile) {
+      await addSpiritPower(playerProfile.playerName, bonusPoints, `dungeon_${dungeonId}`);
+    }
+    
+    return { success: true, points: bonusPoints, isBreakthrough: progress.isBreakthrough };
+  } else {
+    await db.dungeonProgress.update(progress.id, {
+      lastPlayed: Date.now(),
+      todayCount: newTodayCount
+    });
+    return { success: false, points: 0 };
+  }
+}
+
+// 重置每日副本次数（在登录时检查）
+async function resetDungeonDailyCount(playerId) {
+  const today = getTodayStr();
+  const progressList = await db.dungeonProgress.where('playerId').equals(playerId).toArray();
+  
+  for (let progress of progressList) {
+    const lastPlayedDate = progress.lastPlayed ? new Date(progress.lastPlayed).toISOString().split('T')[0] : '';
+    if (lastPlayedDate !== today) {
+      await db.dungeonProgress.update(progress.id, { todayCount: 0 });
+    }
+  }
+}
 
 // Application State
 const state = {
@@ -49,8 +508,14 @@ const state = {
   currentRotation: 0,
   // 连续正确拼写计数
   consecutiveCorrectCount: 0,
+  // 最大连击数（用于日常任务）
+  maxCombo: 0,
   // 练习积分
   practiceScore: 0,
+  // 副本挑战状态
+  isDungeonMode: false,
+  currentDungeonId: null,
+  currentDungeon: null,
   // 本次练习总单词数
   totalWordsInPractice: 0,
   // 本次练习正确数（仅第一轮）
@@ -137,6 +602,210 @@ async function updatePlayerProfile(playerName, pointsEarned) {
   }
   
   return profile;
+}
+
+// ===== 斗罗大陆魂力等级系统 =====
+
+function calculateSpiritLevel(totalSpiritPower, breakthroughCompleted = true) {
+  let cumulativeRequired = 0;
+  
+  for (let tier of SPIRIT_LEVEL_SYSTEM.tiers) {
+    const tierTotal = tier.levels * tier.spiritPowerPerLevel;
+    if (totalSpiritPower < cumulativeRequired + tierTotal) {
+      const remainingInTier = totalSpiritPower - cumulativeRequired;
+      let levelInTier = Math.floor(remainingInTier / tier.spiritPowerPerLevel) + 1;
+      
+      // 突破限制：如果未突破且已达到大级满级，锁定在满级
+      if (!breakthroughCompleted && levelInTier > tier.levels) {
+        levelInTier = tier.levels;
+      }
+      
+      const globalLevel = (tier.id - 1) * 10 + levelInTier;
+      const titleIndex = Math.min(levelInTier - 1, tier.titles.length - 1);
+      
+      // 计算当前小级内的进度
+      const spiritPowerForCurrentLevel = (levelInTier - 1) * tier.spiritPowerPerLevel;
+      const progressInCurrentLevel = remainingInTier - spiritPowerForCurrentLevel;
+      
+      // 如果是大级满级且未突破，显示为需要突破状态
+      const isMaxLevel = levelInTier >= tier.levels;
+      const needsBreakthrough = isMaxLevel && !breakthroughCompleted && tier.id < SPIRIT_LEVEL_SYSTEM.tiers.length;
+      
+      return {
+        tier: tier.name,
+        tierId: tier.id,
+        tierIcon: tier.icon,
+        tierColor: tier.color,
+        level: globalLevel,
+        levelInTier: levelInTier,
+        title: tier.titles[titleIndex],
+        currentSpiritPower: needsBreakthrough ? tierTotal : progressInCurrentLevel,
+        requiredForLevel: tier.spiritPowerPerLevel,
+        progress: needsBreakthrough ? 100 : (progressInCurrentLevel / tier.spiritPowerPerLevel) * 100,
+        nextLevelPower: needsBreakthrough ? 0 : tier.spiritPowerPerLevel - progressInCurrentLevel,
+        isMaxLevel: isMaxLevel,
+        needsBreakthrough: needsBreakthrough,
+        nextTier: needsBreakthrough ? SPIRIT_LEVEL_SYSTEM.tiers[tier.id] : null
+      };
+    }
+    cumulativeRequired += tierTotal;
+  }
+  
+  const lastTier = SPIRIT_LEVEL_SYSTEM.tiers[SPIRIT_LEVEL_SYSTEM.tiers.length - 1];
+  return {
+    tier: lastTier.name,
+    tierId: lastTier.id,
+    tierIcon: lastTier.icon,
+    tierColor: lastTier.color,
+    level: 100,
+    levelInTier: 10,
+    title: lastTier.titles[lastTier.titles.length - 1],
+    currentSpiritPower: totalSpiritPower - cumulativeRequired + lastTier.levels * lastTier.spiritPowerPerLevel,
+    requiredForLevel: lastTier.spiritPowerPerLevel,
+    progress: 100,
+    nextLevelPower: 0,
+    isMaxLevel: true,
+    needsBreakthrough: false,
+    nextTier: null
+  };
+}
+
+// 检查是否需要突破（大级满级且未完成突破）
+function needsBreakthroughCheck(spiritProfile) {
+  if (!spiritProfile) return false;
+  
+  const levelInfo = calculateSpiritLevel(spiritProfile.totalSpiritPower, spiritProfile.breakthroughCompleted);
+  return levelInfo.needsBreakthrough;
+}
+
+// 完成突破（解锁下一个大级）
+async function completeBreakthrough(playerName) {
+  const profile = await db.playerProfiles.where('playerName').equals(playerName).first();
+  if (!profile) return false;
+  
+  const spiritProfile = await db.playerSpiritPower.where('playerId').equals(profile.id).first();
+  if (!spiritProfile) return false;
+  
+  // 更新突破状态
+  await db.playerSpiritPower.update(spiritProfile.id, {
+    breakthroughCompleted: true,
+    lastUpdated: Date.now()
+  });
+  
+  return true;
+}
+
+async function getSpiritPowerProfile(playerName) {
+  const profile = await db.playerProfiles.where('playerName').equals(playerName).first();
+  if (!profile) return null;
+  
+  let spiritProfile = await db.playerSpiritPower.where('playerId').equals(profile.id).first();
+  if (!spiritProfile) {
+    // 计算正确的等级信息
+    const levelInfo = calculateSpiritLevel(profile.totalPoints || 0, true); // 新玩家默认已突破
+    spiritProfile = {
+      playerId: profile.id,
+      totalSpiritPower: profile.totalPoints || 0,
+      currentTier: levelInfo.tier,
+      currentLevel: levelInfo.level,
+      isBreakthroughReady: false,
+      breakthroughCompleted: true, // 新玩家默认已突破（魂士 Lv.1 不需要突破）
+      lastUpdated: Date.now()
+    };
+    await db.playerSpiritPower.add(spiritProfile);
+  } else {
+    // 数据迁移：处理旧记录缺少 breakthroughCompleted 字段的情况
+    if (spiritProfile.breakthroughCompleted === undefined || spiritProfile.breakthroughCompleted === null) {
+      // 先计算理论等级（假设已突破）
+      const theoreticalLevel = calculateSpiritLevel(spiritProfile.totalSpiritPower || 0, true);
+      
+      // 如果理论等级已达到大级满级，则说明需要突破
+      // 旧玩家默认设为需要突破（breakthroughCompleted = false）
+      const needsBreakthrough = theoreticalLevel.levelInTier >= 10 && theoreticalLevel.tierId < SPIRIT_LEVEL_SYSTEM.tiers.length;
+      
+      // 使用突破限制重新计算实际等级
+      const actualLevel = calculateSpiritLevel(spiritProfile.totalSpiritPower || 0, !needsBreakthrough);
+      
+      await db.playerSpiritPower.update(spiritProfile.id, {
+        breakthroughCompleted: !needsBreakthrough,
+        isBreakthroughReady: needsBreakthrough,
+        currentTier: actualLevel.tier,
+        currentLevel: actualLevel.level,
+        lastUpdated: Date.now()
+      });
+      
+      spiritProfile.breakthroughCompleted = !needsBreakthrough;
+      spiritProfile.isBreakthroughReady = needsBreakthrough;
+      spiritProfile.currentTier = actualLevel.tier;
+      spiritProfile.currentLevel = actualLevel.level;
+    } else {
+      // 同步数据：如果 totalPoints 更新了，确保魂力记录也更新
+      if (spiritProfile.totalSpiritPower !== (profile.totalPoints || 0)) {
+        const levelInfo = calculateSpiritLevel(profile.totalPoints || 0, spiritProfile.breakthroughCompleted);
+        await db.playerSpiritPower.update(spiritProfile.id, {
+          totalSpiritPower: profile.totalPoints || 0,
+          currentTier: levelInfo.tier,
+          currentLevel: levelInfo.level,
+          isBreakthroughReady: levelInfo.needsBreakthrough,
+          lastUpdated: Date.now()
+        });
+        spiritProfile.totalSpiritPower = profile.totalPoints || 0;
+        spiritProfile.currentTier = levelInfo.tier;
+        spiritProfile.currentLevel = levelInfo.level;
+        spiritProfile.isBreakthroughReady = levelInfo.needsBreakthrough;
+      }
+    }
+  }
+  return spiritProfile;
+}
+
+async function addSpiritPower(playerName, spiritPower, source = 'practice') {
+  const profile = await db.playerProfiles.where('playerName').equals(playerName).first();
+  if (!profile) return null;
+  
+  let spiritProfile = await getSpiritPowerProfile(playerName);
+  // 使用突破状态计算等级
+  const oldLevel = calculateSpiritLevel(spiritProfile.totalSpiritPower, spiritProfile.breakthroughCompleted);
+  
+  const newTotal = spiritProfile.totalSpiritPower + spiritPower;
+  // 使用突破状态计算新等级
+  const newLevel = calculateSpiritLevel(newTotal, spiritProfile.breakthroughCompleted);
+  
+  await db.playerSpiritPower.update(spiritProfile.id, {
+    totalSpiritPower: newTotal,
+    currentTier: newLevel.tier,
+    currentLevel: newLevel.level,
+    isBreakthroughReady: newLevel.needsBreakthrough,
+    lastUpdated: Date.now()
+  });
+  
+  spiritProfile.totalSpiritPower = newTotal;
+  spiritProfile.currentTier = newLevel.tier;
+  spiritProfile.currentLevel = newLevel.level;
+  spiritProfile.isBreakthroughReady = newLevel.needsBreakthrough;
+  
+  const leveledUp = newLevel.level > oldLevel.level;
+  
+  return {
+    profile: spiritProfile,
+    oldLevel: oldLevel,
+    newLevel: newLevel,
+    leveledUp: leveledUp,
+    spiritPowerAdded: spiritPower
+  };
+}
+
+// 获取玩家的魂力信息（便捷函数）
+async function getPlayerSpiritInfo(playerName) {
+  const spiritProfile = await getSpiritPowerProfile(playerName);
+  if (!spiritProfile) return null;
+  
+  // 使用突破状态计算等级
+  const levelInfo = calculateSpiritLevel(spiritProfile.totalSpiritPower, spiritProfile.breakthroughCompleted);
+  return {
+    ...spiritProfile,
+    ...levelInfo
+  };
 }
 
 // Initialize App
@@ -2245,6 +2914,9 @@ ${text}`;
       </div>
     `;
 
+    // 加载已有玩家名字到 datalist
+    this.loadPlayerNamesToDatalist('failed-player-name-datalist');
+
     modal.classList.add('active');
   },
 
@@ -2371,11 +3043,105 @@ ${text}`;
       return;
     }
 
+    // 检查超级作弊码：输入"xxx"立即完成所有单词练习
+    if (input === 'xxx') {
+      // 计算总得分：单词个数 × 5
+      const totalWords = state.practiceWords.length;
+      const bonusScore = totalWords * 5;
+      state.practiceScore += bonusScore;
+      
+      // 更新所有单词的练习时间，但不记录正确或错误次数
+      for (const practiceWord of state.practiceWords) {
+        await db.words.update(practiceWord.id, {
+          lastPracticed: Date.now()
+        });
+        
+        // 记录为正确（用于正确率统计）
+        if (!state.firstRoundCorrectIds.includes(practiceWord.id)) {
+          state.firstRoundCorrectIds.push(practiceWord.id);
+        }
+      }
+      
+      // 更新正确数为总单词数
+      state.correctWordsInPractice = totalWords;
+      
+      // 更新积分显示
+      this.updateScoreDisplayWithAnimation();
+      
+      // 显示作弊成功提示
+      this.showToast(`🎉 作弊成功！立即完成练习，获得 ${bonusScore} 分奖励`, 'success');
+      
+      // 直接显示完成界面
+      setTimeout(() => {
+        this.showPracticeCompleteModal();
+      }, 1000);
+      
+      return;
+    }
+
+    // 检查作弊码：输入"zzz"匹配一切答案（不记录正确/错误次数）
+    const isCheatCode = input === 'zzz';
+    
+    // 使用 zz 作弊码时，不记录正确/错误次数，只更新练习时间
+    if (isCheatCode) {
+      // 增加连续正确计数
+      state.consecutiveCorrectCount++;
+      
+      // 更新最大连击数
+      state.maxCombo = Math.max(state.maxCombo, state.consecutiveCorrectCount);
+
+      // 计算本次得分：第 1 次 1 分，每次 +1 分，最高 5 分
+      const pointsEarned = Math.min(state.consecutiveCorrectCount, 5);
+      state.practiceScore += pointsEarned;
+
+      // 只记录第一轮就答对的单词（用于正确率计算）
+      if (!state.firstRoundCorrectIds.includes(word.id) && !state.firstRoundWrongIds.includes(word.id)) {
+        state.firstRoundCorrectIds.push(word.id);
+        state.correctWordsInPractice++;
+      }
+
+      // 触发子弹动画
+      const bulletCount = Math.min(state.consecutiveCorrectCount, 5);
+      const pushPerBullet = 2;
+      this.fireBullet(bulletCount, () => {
+        this.pushZombieBack(pushPerBullet);
+      });
+
+      // 更新积分显示并添加动画
+      this.updateScoreDisplayWithAnimation();
+
+      // 显示赞赏动画
+      this.showPraiseAnimation(state.consecutiveCorrectCount);
+
+      feedback.innerHTML = `
+        <div>✅ 回答正确！+${pointsEarned}分</div>
+        <div class="correct-word">${word.word}</div>
+      `;
+      feedback.className = 'practice-feedback correct show';
+
+      // 只更新练习时间，不记录正确次数
+      await db.words.update(word.id, {
+        lastPracticed: Date.now()
+      });
+
+      // Auto next after delay
+      setTimeout(() => {
+        state.currentPracticeIndex++;
+        this.showNextWord();
+      }, 2000);
+      
+      await this.checkAndUpdateHighErrorStatus(word.id);
+      return;
+    }
+    
     const isCorrect = input === word.word.toLowerCase();
 
     if (isCorrect) {
       // 增加连续正确计数
       state.consecutiveCorrectCount++;
+      
+      // 更新最大连击数
+      state.maxCombo = Math.max(state.maxCombo, state.consecutiveCorrectCount);
 
       // 计算本次得分：第 1 次 1 分，每次 +1 分，最高 5 分
       const pointsEarned = Math.min(state.consecutiveCorrectCount, 5);
@@ -2559,6 +3325,38 @@ ${text}`;
     }, 2500);
   },
 
+  // 加载玩家名字到 datalist
+  async loadPlayerNamesToDatalist(datalistId) {
+    const datalist = document.getElementById(datalistId);
+    if (!datalist) return;
+    
+    // 清空现有选项
+    datalist.innerHTML = '';
+    
+    try {
+      // 从数据库获取所有玩家名字（从 playerProfiles 表读取角色列表）
+      const profiles = await db.playerProfiles.toArray();
+      
+      // 收集所有名字并去重（过滤空值和空白）
+      const names = profiles
+        .map(p => p.playerName)
+        .filter(name => name && name.trim())
+        .map(name => name.trim());
+      
+      // 使用 Set 去重
+      const uniqueNames = [...new Set(names)];
+      
+      // 添加选项到 datalist
+      for (const name of uniqueNames) {
+        const option = document.createElement('option');
+        option.value = name;
+        datalist.appendChild(option);
+      }
+    } catch (error) {
+      console.error('加载玩家名字失败:', error);
+    }
+  },
+
   // 触发烟花效果
   triggerFireworks(intensity) {
     const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E2'];
@@ -2646,6 +3444,9 @@ ${text}`;
       <div>正确率: ${Math.round((state.correctWordsInPractice / state.firstRoundTotalWords) * 100)}%</div>
     `;
     
+    // 加载已有玩家名字到 datalist
+    this.loadPlayerNamesToDatalist('player-name-datalist');
+    
     modal.classList.add('active');
     
     // 触发庆祝烟花
@@ -2689,6 +3490,29 @@ ${text}`;
     const oldProfile = await getPlayerProfile(playerName);
     const newProfile = await updatePlayerProfile(playerName, state.practiceScore);
     
+    // 斗罗大陆魂力系统：将积分转换为魂力
+    const spiritResult = await addSpiritPower(playerName, state.practiceScore, 'practice');
+    
+    // 日常任务追踪
+    const playerProfile = await db.playerProfiles.where('playerName').equals(playerName).first();
+    if (playerProfile) {
+      // 1. 武魂修炼：完成一次拼写练习
+      await this.trackDailyTask(playerProfile.id, 'cultivation');
+      
+      // 2. 单词训练：累加单词数
+      await updateWordTrainingProgress(playerProfile.id, state.totalWordsInPractice);
+      
+      // 3. 连击挑战：达成 10 连击
+      if (state.maxCombo >= 10) {
+        await this.trackDailyTask(playerProfile.id, 'streak');
+      }
+      
+      // 4. 完美通关：一轮全对（≥20 词）
+      if (state.wrongWordsInRound.length === 0 && state.totalWordsInPractice >= 20) {
+        await this.trackDailyTask(playerProfile.id, 'perfect');
+      }
+    }
+    
     // 检查是否升级
     let leveledUp = false;
     let newLevelInfo = null;
@@ -2701,11 +3525,55 @@ ${text}`;
         this.triggerFireworks(8);
       }
     }
+    
+    // 斗罗大陆等级升级检测
+    if (spiritResult && spiritResult.leveledUp) {
+      this.showToast(`🔥 魂力突破！${spiritResult.newLevel.tierIcon} ${spiritResult.newLevel.tier} Lv.${spiritResult.newLevel.level} [${spiritResult.newLevel.title}]`, 'success');
+      this.triggerFireworks(12);
+    }
+
+    // 副本挑战完成处理
+    if (state.isDungeonMode && state.currentDungeonId) {
+      await this.handleDungeonCompletion(playerProfile, true, {
+        score: state.practiceScore,
+        accuracy: state.firstRoundTotalWords > 0 ? state.firstRoundCorrectIds.length / state.firstRoundTotalWords : 0
+      });
+    }
 
     this.closePracticeCompleteModal();
     this.endPractice();
     this.updateStats();
     this.showToast('成绩已保存！', 'success');
+  },
+
+  // 处理副本完成
+  async handleDungeonCompletion(playerProfile, success, practiceData) {
+    const dungeonId = state.currentDungeonId;
+    const result = await completeDungeon(playerProfile.id, dungeonId, success, practiceData);
+    
+    if (result.success) {
+      const dungeon = state.currentDungeon;
+      if (result.isBreakthrough) {
+        this.showToast(`⚡ 突破成功！${dungeon.name} 已解锁！获得 ${result.points} 魂力`, 'success');
+        this.triggerFireworks(10);
+      } else {
+        this.showToast(`副本完成！获得 ${result.points} 魂力`, 'success');
+      }
+    }
+    
+    // 重置副本状态
+    state.isDungeonMode = false;
+    state.currentDungeonId = null;
+    state.currentDungeon = null;
+  },
+
+  // 追踪日常任务（简单任务，直接标记完成）
+  async trackDailyTask(playerId, taskType) {
+    const today = getTodayStr();
+    const task = await db.dailyTasks.where({ playerId, date: today, taskType }).first();
+    if (!task || task.completed) return;
+    
+    await completeDailyTask(playerId, taskType);
   },
 
   // 关闭练习完成弹窗
@@ -2789,7 +3657,8 @@ ${text}`;
     } else {
       selectorContainer.innerHTML = allProfiles.map((profile, index) => {
         const levelInfo = LEVEL_SYSTEM.levels.find(l => l.id === profile.level);
-        const isSelected = index === 0; // 默认选中第一个（积分最高的）
+        const isSelected = index === 0;
+        const spiritLevelText = `${profile.totalPoints} 魂力`;
         return `
           <div onclick="app.switchProfile('${profile.playerName}')" 
                style="flex-shrink: 0; padding: 12px 16px; background: ${isSelected ? 'var(--primary)' : 'var(--bg-secondary)'}; 
@@ -2798,15 +3667,12 @@ ${text}`;
                onmouseover="this.style.transform='translateY(-2px)'" 
                onmouseout="this.style.transform='translateY(0)'">
             <div style="text-align: center;">
-              <div style="font-size: 24px; margin-bottom: 4px;">${levelInfo.icon}</div>
+              <div style="font-size: 24px; margin-bottom: 4px;">🌱</div>
               <div style="font-size: 12px; font-weight: 600; color: ${isSelected ? 'white' : 'var(--text-primary)'}; margin-bottom: 4px;">
                 ${profile.playerName.substring(0, 6)}${profile.playerName.length > 6 ? '...' : ''}
               </div>
               <div style="font-size: 10px; color: ${isSelected ? 'rgba(255,255,255,0.8)' : 'var(--text-muted)'};">
-                ${levelInfo.name}
-              </div>
-              <div style="font-size: 14px; font-weight: 700; color: ${isSelected ? 'white' : 'var(--primary)'}; margin-top: 4px;">
-                ${profile.totalPoints}分
+                ${spiritLevelText}
               </div>
             </div>
           </div>
@@ -2832,35 +3698,65 @@ ${text}`;
     document.getElementById('profile-player-name').textContent = playerName;
     
     if (profile) {
-      const levelInfo = LEVEL_SYSTEM.levels.find(l => l.id === profile.level);
-      document.getElementById('profile-level-icon').textContent = levelInfo.icon;
-      document.getElementById('profile-level-name').textContent = levelInfo.name;
       document.getElementById('profile-total-points').textContent = profile.totalPoints;
       
-      // 更新总积分区域的等级显示
-      document.getElementById('profile-total-level-icon').textContent = levelInfo.icon;
-      document.getElementById('profile-total-level-name').textContent = levelInfo.name;
-      
-      // 更新等级进度条
-      const progress = getLevelProgress(profile.totalPoints, levelInfo);
-      document.getElementById('profile-level-progress-bar').style.width = `${progress}%`;
-      
-      if (levelInfo.maxPoints === Infinity) {
-        document.getElementById('profile-level-progress-text').textContent = 'MAX';
-      } else {
-        document.getElementById('profile-level-progress-text').textContent = `${profile.totalPoints}/${levelInfo.maxPoints}`;
+      // 斗罗大陆魂力等级显示
+      const spiritInfo = await getPlayerSpiritInfo(playerName);
+      if (spiritInfo) {
+        // 更新主等级显示为斗罗大陆等级
+        document.getElementById('profile-level-icon').textContent = spiritInfo.tierIcon;
+        
+        // 如果需要突破，显示突破提示
+        if (spiritInfo.needsBreakthrough) {
+          document.getElementById('profile-level-name').textContent = `${spiritInfo.tier} Lv.${spiritInfo.level} [待突破]`;
+          document.getElementById('profile-level-name').style.color = '#FF6B6B';
+        } else {
+          document.getElementById('profile-level-name').textContent = `${spiritInfo.tier} Lv.${spiritInfo.level}`;
+          document.getElementById('profile-level-name').style.color = '';
+        }
+        
+        // 更新总积分区域的等级显示
+        document.getElementById('profile-total-level-icon').textContent = spiritInfo.tierIcon;
+        if (spiritInfo.needsBreakthrough) {
+          document.getElementById('profile-total-level-name').textContent = `${spiritInfo.tier} Lv.${spiritInfo.level} [待突破]`;
+        } else {
+          document.getElementById('profile-total-level-name').textContent = `${spiritInfo.tier} Lv.${spiritInfo.level}`;
+        }
+        
+        // 显示称号
+        const titleEl = document.getElementById('profile-title-display');
+        if (titleEl) {
+          if (spiritInfo.needsBreakthrough) {
+            titleEl.textContent = `[${spiritInfo.title}] - 需要完成突破任务`;
+            titleEl.style.color = '#FF6B6B';
+          } else {
+            titleEl.textContent = `[${spiritInfo.title}]`;
+            titleEl.style.color = spiritInfo.tierColor;
+          }
+        }
+        
+        // 更新魂力进度条
+        document.getElementById('profile-level-progress-bar').style.width = `${spiritInfo.progress}%`;
+        
+        // 进度显示：如果需要突破，显示突破提示
+        if (spiritInfo.needsBreakthrough) {
+          const nextTier = SPIRIT_LEVEL_SYSTEM.tiers[spiritInfo.tierId] || null;
+          document.getElementById('profile-level-progress-text').textContent = `已满级！需完成突破任务 → ${nextTier ? nextTier.name : '已满级'}`;
+        } else {
+          document.getElementById('profile-level-progress-text').textContent = `${Math.floor(spiritInfo.currentSpiritPower)}/${spiritInfo.requiredForLevel} 魂力 (${spiritInfo.totalSpiritPower} 总魂力)`;
+        }
       }
       
       // 显示头像
       this.displayProfileAvatar(profile.avatar);
     } else {
-      document.getElementById('profile-level-icon').textContent = '🥉';
-      document.getElementById('profile-level-name').textContent = '倔强青铜';
+      document.getElementById('profile-level-icon').textContent = '🌱';
+      document.getElementById('profile-level-name').textContent = '魂士 Lv.1';
       document.getElementById('profile-total-points').textContent = '0';
-      document.getElementById('profile-total-level-icon').textContent = '🥉';
-      document.getElementById('profile-total-level-name').textContent = '倔强青铜';
+      document.getElementById('profile-total-level-icon').textContent = '🌱';
+      document.getElementById('profile-total-level-name').textContent = '魂士 Lv.1';
       document.getElementById('profile-level-progress-bar').style.width = '0%';
-      document.getElementById('profile-level-progress-text').textContent = '0/500';
+      document.getElementById('profile-level-progress-text').textContent = '0/100 魂力';
       this.displayProfileAvatar(null);
     }
     
@@ -2883,12 +3779,208 @@ ${text}`;
       
       // 显示最近练习记录
       await this.renderProfileRecentPractices(playerName);
+      
+      // 渲染日常任务
+      await this.renderDailyTasks(playerName);
+      
+      // 渲染副本任务
+      await this.renderDungeons(playerName);
     } else {
       document.getElementById('profile-total-practices').textContent = '0';
       document.getElementById('profile-total-words').textContent = '0';
       document.getElementById('profile-total-correct').textContent = '0';
       document.getElementById('profile-accuracy').textContent = '0%';
       document.getElementById('profile-recent-practices-card').style.display = 'none';
+      document.getElementById('daily-tasks-list').innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">请先登录角色</div>';
+      document.getElementById('dungeon-list').innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">请先登录角色</div>';
+    }
+  },
+
+  // 渲染日常任务
+  async renderDailyTasks(playerName) {
+    const container = document.getElementById('daily-tasks-list');
+    const playerProfile = await db.playerProfiles.where('playerName').equals(playerName).first();
+    
+    if (!playerProfile) {
+      container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">请先登录角色</div>';
+      return;
+    }
+    
+    // 初始化今日任务
+    await initDailyTasks(playerProfile.id);
+    
+    // 获取任务列表
+    const tasks = await getDailyTasks(playerProfile.id);
+    
+    if (tasks.length === 0) {
+      container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">暂无任务</div>';
+      return;
+    }
+    
+    container.innerHTML = tasks.map(task => {
+      const isCompleted = task.completed;
+      const targetWords = DAILY_TASK_CONFIG.wordTraining.targetWords;
+      const currentProgress = Math.min(task.progress || 0, targetWords);
+      
+      // 已完成后显示最终进度，否则显示当前进度
+      const progressText = task.taskType === 'wordTraining' ? `${isCompleted ? targetWords : currentProgress}/${targetWords}` : '';
+      
+      return `
+        <div style="background: ${isCompleted ? 'var(--success)' : 'var(--bg-secondary)'}; 
+                    border-radius: var(--radius); padding: 12px 16px; 
+                    border: 1px solid ${isCompleted ? 'var(--success)' : 'var(--border)'}; 
+                    display: flex; align-items: center; gap: 12px;">
+          <div style="font-size: 24px;">${task.icon}</div>
+          <div style="flex: 1;">
+            <div style="font-weight: 600; color: ${isCompleted ? 'white' : 'var(--text-primary)'};">${task.name}</div>
+            <div style="font-size: 12px; color: ${isCompleted ? 'rgba(255,255,255,0.8)' : 'var(--text-muted)'};">
+              ${task.description}
+              ${progressText ? ` (${progressText})` : ''}
+            </div>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-size: 14px; font-weight: 700; color: ${isCompleted ? 'white' : 'var(--primary)'};">
+              ${isCompleted ? '✓ 已领取' : `+${task.reward}`}
+            </div>
+            <div style="font-size: 10px; color: ${isCompleted ? 'rgba(255,255,255,0.7)' : 'var(--text-muted)'};">魂力</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  },
+
+  // 渲染副本任务
+  async renderDungeons(playerName) {
+    const container = document.getElementById('dungeon-list');
+    const playerProfile = await db.playerProfiles.where('playerName').equals(playerName).first();
+    
+    if (!playerProfile) {
+      container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">请先登录角色</div>';
+      return;
+    }
+    
+    // 重置每日次数
+    await resetDungeonDailyCount(playerProfile.id);
+    
+    // 获取副本列表
+    const dungeons = await getAllDungeons(playerProfile.id);
+    
+    if (dungeons.length === 0) {
+      container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">暂无副本</div>';
+      return;
+    }
+    
+    container.innerHTML = dungeons.map(dungeon => {
+      const isUnlocked = dungeon.isUnlocked;
+      const progress = dungeon.progress;
+      const isBreakthrough = progress && progress.isBreakthrough;
+      const todayCount = dungeon.todayCount || 0;
+      const canChallenge = isUnlocked && (!progress || todayCount < 3);
+      
+      if (!isUnlocked) {
+        return `
+          <div style="background: var(--bg-secondary); border-radius: var(--radius); padding: 12px 16px; 
+                      border: 1px solid var(--border); opacity: 0.6;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <div style="font-weight: 600; color: var(--text-muted);">🔒 ${dungeon.name}</div>
+                <div style="font-size: 12px; color: var(--text-muted);">解锁条件：${dungeon.unlockLevel} 级</div>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      
+      const modeText = dungeon.requirements.mode === 'spelling' ? '拼写练习' : '句子填空';
+      const wordCount = dungeon.requirements.wordCount;
+      const accuracy = Math.floor(dungeon.requirements.accuracyRequired * 100);
+      
+      return `
+        <div style="background: ${isBreakthrough ? 'linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%)' : 'var(--bg-secondary)'}; 
+                    border-radius: var(--radius); padding: 12px 16px; 
+                    border: 1px solid ${isBreakthrough ? '#ff6b6b' : 'var(--border)'};">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              ${isBreakthrough ? '<span style="font-size: 16px;">⚡</span>' : '<span style="font-size: 16px;">✅</span>'}
+              <div>
+                <div style="font-weight: 600; color: ${isBreakthrough ? 'white' : 'var(--text-primary)'};">
+                  ${dungeon.name} ${isBreakthrough ? '(突破任务)' : ''}
+                </div>
+                <div style="font-size: 12px; color: ${isBreakthrough ? 'rgba(255,255,255,0.8)' : 'var(--text-muted)'};">
+                  ${dungeon.description}
+                </div>
+              </div>
+            </div>
+            <div style="text-align: right;">
+              <div style="font-size: 12px; color: ${isBreakthrough ? 'white' : 'var(--text-muted)'};">
+                今日剩余：${3 - todayCount}/3 次
+              </div>
+              <div style="font-size: 11px; color: ${isBreakthrough ? 'rgba(255,255,255,0.7)' : 'var(--text-muted)'};">
+                积分系数：×${dungeon.pointsMultiplier} | 正确率：≥${accuracy}%
+              </div>
+            </div>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="font-size: 11px; color: ${isBreakthrough ? 'rgba(255,255,255,0.7)' : 'var(--text-muted)'};">
+              任务要求：${wordCount} 词${modeText}
+            </div>
+            ${canChallenge ? `
+              <button class="btn btn-primary" style="padding: 6px 16px; font-size: 12px;" 
+                      onclick="app.startDungeonChallenge('${dungeon.id}')">
+                ${isBreakthrough ? '挑战突破' : '挑战'}
+              </button>
+            ` : `
+              <span style="font-size: 11px; color: var(--text-muted);">今日次数已用完</span>
+            `}
+          </div>
+        </div>
+      `;
+    }).join('');
+  },
+
+  // 开始副本挑战
+  async startDungeonChallenge(dungeonId) {
+    const playerName = document.getElementById('player-name-input').value.trim();
+    if (!playerName) {
+      this.showToast('请先登录角色', 'error');
+      return;
+    }
+    
+    const playerProfile = await db.playerProfiles.where('playerName').equals(playerName).first();
+    if (!playerProfile) {
+      this.showToast('请先登录角色', 'error');
+      return;
+    }
+    
+    const dungeon = DUNGEONS.find(d => d.id === dungeonId);
+    if (!dungeon) {
+      this.showToast('副本不存在', 'error');
+      return;
+    }
+    
+    // 检查每日次数
+    const progress = await getDungeonProgress(playerProfile.id, dungeonId);
+    if (progress && (progress.todayCount || 0) >= 3) {
+      this.showToast('今日挑战次数已用完', 'error');
+      return;
+    }
+    
+    // 记录当前副本挑战状态
+    state.isDungeonMode = true;
+    state.currentDungeonId = dungeonId;
+    state.currentDungeon = dungeon;
+    
+    this.showToast(`进入 ${dungeon.name} 挑战！`, 'success');
+    
+    // 根据副本要求启动练习模式
+    if (dungeon.requirements.mode === 'spelling') {
+      // 单词拼写模式
+      document.getElementById('practice-count-select').value = dungeon.requirements.wordCount;
+      this.startPractice();
+    } else {
+      // 句子填空模式
+      document.getElementById('sentence-practice-count').value = dungeon.requirements.wordCount;
+      this.startSentencePractice();
     }
   },
 
@@ -2899,26 +3991,32 @@ ${text}`;
     
     if (!profile) return;
     
-    const levelInfo = LEVEL_SYSTEM.levels.find(l => l.id === profile.level);
+    // 获取魂力等级信息
+    const spiritInfo = await getPlayerSpiritInfo(playerName);
     
     // 更新玩家信息
     document.getElementById('profile-player-name').textContent = playerName;
-    document.getElementById('profile-level-icon').textContent = levelInfo.icon;
-    document.getElementById('profile-level-name').textContent = levelInfo.name;
     document.getElementById('profile-total-points').textContent = profile.totalPoints;
     
-    // 更新总积分区域的等级显示
-    document.getElementById('profile-total-level-icon').textContent = levelInfo.icon;
-    document.getElementById('profile-total-level-name').textContent = levelInfo.name;
-    
-    // 更新等级进度条
-    const progress = getLevelProgress(profile.totalPoints, levelInfo);
-    document.getElementById('profile-level-progress-bar').style.width = `${progress}%`;
-    
-    if (levelInfo.maxPoints === Infinity) {
-      document.getElementById('profile-level-progress-text').textContent = 'MAX';
-    } else {
-      document.getElementById('profile-level-progress-text').textContent = `${profile.totalPoints}/${levelInfo.maxPoints}`;
+    if (spiritInfo) {
+      // 更新主等级显示为斗罗大陆等级
+      document.getElementById('profile-level-icon').textContent = spiritInfo.tierIcon;
+      document.getElementById('profile-level-name').textContent = `${spiritInfo.tier} Lv.${spiritInfo.level}`;
+      
+      // 更新总积分区域的等级显示
+      document.getElementById('profile-total-level-icon').textContent = spiritInfo.tierIcon;
+      document.getElementById('profile-total-level-name').textContent = `${spiritInfo.tier} Lv.${spiritInfo.level}`;
+      
+      // 显示称号
+      const titleEl = document.getElementById('profile-title-display');
+      if (titleEl) {
+        titleEl.textContent = `[${spiritInfo.title}]`;
+        titleEl.style.color = spiritInfo.tierColor;
+      }
+      
+      // 更新魂力进度条
+      document.getElementById('profile-level-progress-bar').style.width = `${spiritInfo.progress}%`;
+      document.getElementById('profile-level-progress-text').textContent = `${Math.floor(spiritInfo.currentSpiritPower)}/${spiritInfo.requiredForLevel} 魂力 (${spiritInfo.totalSpiritPower} 总魂力)`;
     }
     
     // 显示头像
@@ -2942,6 +4040,9 @@ ${text}`;
     
     // 显示最近练习记录
     await this.renderProfileRecentPractices(playerName);
+    
+    // 渲染日常任务
+    await this.renderDailyTasks(playerName);
     
     // 更新角色选择器的高亮状态
     const selectorContainer = document.getElementById('profile-character-selector');
@@ -3637,12 +4738,22 @@ ${text}`;
     for (const profile of profiles) {
       if (profile.avatar) {
         // 保留有头像的角色，只清除其他数据
-        await db.playerProfiles.update(profile.id, {
-          totalPoints: 0,
-          level: 1,
-          levelName: '倔强青铜',
-          lastPlayedAt: null
+      await db.playerProfiles.update(profile.id, {
+        totalPoints: 0,
+        level: 1,
+        lastPlayedAt: null
+      });
+      
+      // 同时清除魂力数据
+      const spiritProfile = await db.playerSpiritPower.where('playerId').equals(profile.id).first();
+      if (spiritProfile) {
+        await db.playerSpiritPower.update(spiritProfile.id, {
+          totalSpiritPower: 0,
+          currentTier: '魂士',
+          currentLevel: 1,
+          lastUpdated: Date.now()
         });
+      }
       } else {
         // 没有头像的角色直接删除
         await db.playerProfiles.delete(profile.id);
@@ -4298,6 +5409,104 @@ ${wordList}
       return;
     }
 
+    // 检查超级作弊码：输入"xxx"立即完成所有句子填空练习
+    if (input === 'xxx') {
+      // 计算总得分：单词个数 × 5
+      const totalWords = state.sentencePracticeData.length;
+      const bonusScore = totalWords * 5;
+      state.sentencePracticeScore += bonusScore;
+      
+      // 更新所有单词的练习时间，但不记录正确或错误次数
+      for (const sentenceData of state.sentencePracticeData) {
+        if (sentenceData.wordId) {
+          await db.words.update(sentenceData.wordId, {
+            lastPracticed: Date.now()
+          });
+          
+          // 记录为正确（用于正确率统计）
+          if (!state.sentenceFirstRoundCorrectIds.includes(sentenceData.wordId)) {
+            state.sentenceFirstRoundCorrectIds.push(sentenceData.wordId);
+          }
+        }
+      }
+      
+      // 更新正确数为总单词数
+      state.sentenceCorrectWords = totalWords;
+      
+      // 更新积分显示
+      this.updateSentenceScoreDisplayWithAnimation();
+      
+      // 显示作弊成功提示
+      this.showToast(`🎉 作弊成功！立即完成练习，获得 ${bonusScore} 分奖励`, 'success');
+      
+      // 直接显示完成界面
+      setTimeout(() => {
+        this.showSentencePracticeCompleteModal();
+      }, 1000);
+      
+      return;
+    }
+
+    // 检查作弊码：输入"zzz"匹配一切答案（不记录正确/错误次数）
+    const isCheatCode = input === 'zzz';
+    
+    // 使用 zz 作弊码时，不记录正确/错误次数，只更新练习时间
+    if (isCheatCode) {
+      // 增加连续正确计数
+      state.sentenceConsecutiveCorrectCount++;
+
+      // 计算本次得分：第 1 次 1 分，每次 +1 分，最高 5 分；如果使用提示则只得 1 分
+      let pointsEarned;
+      if (state.sentenceHintUsed) {
+        pointsEarned = 1;
+      } else {
+        pointsEarned = Math.min(state.sentenceConsecutiveCorrectCount, 5);
+      }
+      state.sentencePracticeScore += pointsEarned;
+
+      // 只记录第一轮就答对的单词（用于正确率计算）
+      if (data.wordId && !state.sentenceFirstRoundCorrectIds.includes(data.wordId) && !state.sentenceFirstRoundWrongIds.includes(data.wordId)) {
+        state.sentenceFirstRoundCorrectIds.push(data.wordId);
+        state.sentenceCorrectWords++;
+      }
+
+      // 更新积分显示并添加动画
+      this.updateSentenceScoreDisplayWithAnimation();
+
+      // 显示赞赏动画
+      this.showPraiseAnimation(state.sentenceConsecutiveCorrectCount);
+
+      // 显示完整句子（高亮句子中的单词形态）
+      const fullSentence = data.sentence.replace(
+        new RegExp(`\\b${data.hiddenWord}\\b`, 'gi'),
+        `<span style="color: var(--success); font-weight: 700;">${data.hiddenWord}</span>`
+      );
+
+      feedback.innerHTML = `
+        <div>✅ 回答正确！+${pointsEarned}分</div>
+        <div style="margin-top: 8px; font-size: 16px;">${fullSentence}</div>
+      `;
+      feedback.className = 'practice-feedback correct show';
+
+      // 只更新练习时间，不记录正确次数
+      if (data.wordId) {
+        await db.words.update(data.wordId, {
+          lastPracticed: Date.now()
+        });
+      }
+
+      // 自动进入下一题
+      setTimeout(() => {
+        state.currentSentenceIndex++;
+        this.showNextSentence();
+      }, 2000);
+      
+      if (data.wordId) {
+        await this.checkAndUpdateHighErrorStatus(data.wordId);
+      }
+      return;
+    }
+    
     // 检查答案（比较输入和原始单词，不区分大小写）
     // 用户需要输入词库中的原始单词形态
     const isCorrect = input === data.originalWord.toLowerCase();
@@ -4421,6 +5630,9 @@ ${wordList}
       <div>正确率: ${Math.round((state.sentenceCorrectWords / state.sentenceFirstRoundTotalWords) * 100)}%</div>
     `;
 
+    // 加载已有玩家名字到 datalist
+    this.loadPlayerNamesToDatalist('sentence-player-name-datalist');
+
     modal.classList.add('active');
 
     // 触发庆祝烟花
@@ -4465,6 +5677,29 @@ ${wordList}
     const oldProfile = await getPlayerProfile(playerName);
     const newProfile = await updatePlayerProfile(playerName, state.sentencePracticeScore);
     
+    // 斗罗大陆魂力系统：将积分转换为魂力
+    const spiritResult = await addSpiritPower(playerName, state.sentencePracticeScore, 'sentence_practice');
+    
+    // 日常任务追踪
+    const playerProfile = await db.playerProfiles.where('playerName').equals(playerName).first();
+    if (playerProfile) {
+      // 1. 学院功课：完成一次句子填空
+      await this.trackDailyTask(playerProfile.id, 'sentenceTraining');
+      
+      // 2. 单词训练：累加单词数
+      await updateWordTrainingProgress(playerProfile.id, state.sentenceTotalWords);
+      
+      // 3. 连击挑战：达成 10 连击
+      if (state.maxCombo >= 10) {
+        await this.trackDailyTask(playerProfile.id, 'streak');
+      }
+      
+      // 4. 完美通关：一轮全对（≥20 词）
+      if (state.sentenceFirstRoundWrongIds.length === 0 && state.sentenceTotalWords >= 20) {
+        await this.trackDailyTask(playerProfile.id, 'perfect');
+      }
+    }
+    
     // 检查是否升级
     let leveledUp = false;
     let newLevelInfo = null;
@@ -4476,6 +5711,20 @@ ${wordList}
         this.showToast(`恭喜升级！${newLevelInfo.name}`, 'success');
         this.triggerFireworks(8);
       }
+    }
+    
+    // 斗罗大陆等级升级检测
+    if (spiritResult && spiritResult.leveledUp) {
+      this.showToast(`🔥 魂力突破！${spiritResult.newLevel.tierIcon} ${spiritResult.newLevel.tier} Lv.${spiritResult.newLevel.level} [${spiritResult.newLevel.title}]`, 'success');
+      this.triggerFireworks(12);
+    }
+
+    // 副本挑战完成处理（句子填空模式）
+    if (state.isDungeonMode && state.currentDungeonId) {
+      await this.handleDungeonCompletion(playerProfile, true, {
+        score: state.sentencePracticeScore,
+        accuracy: state.sentenceTotalWords > 0 ? state.sentenceCorrectWords / state.sentenceTotalWords : 0
+      });
     }
 
     this.closeSentencePracticeCompleteModal();

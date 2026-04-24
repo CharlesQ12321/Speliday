@@ -1967,9 +1967,10 @@
               <div style="flex: 1;">
                 <div style="font-size: 24px; font-weight: 700; margin-bottom: 4px;" id="profile-player-name">未登录</div>
                 <div style="display: flex; align-items: center; gap: 8px; font-size: 14px; opacity: 0.9;">
-                  <span id="profile-level-icon" style="font-size: 20px;">🥉</span>
-                  <span id="profile-level-name">倔强青铜</span>
+                  <span id="profile-level-icon" style="font-size: 20px;">🌱</span>
+                  <span id="profile-level-name">魂士 Lv.1</span>
                 </div>
+                <div id="profile-title-display" style="font-size: 12px; margin-top: 2px; opacity: 0.8;">[武魂觉醒]</div>
               </div>
             </div>
             
@@ -2026,6 +2027,22 @@
               <div class="stat-label">平均正确率</div>
               <div class="stat-value" id="profile-accuracy">0%</div>
             </div>
+          </div>
+        </div>
+        
+        <!-- 日常任务 -->
+        <div class="card">
+          <div class="card-title">📋 今日任务</div>
+          <div id="daily-tasks-list" style="display: flex; flex-direction: column; gap: 10px;">
+            <!-- 日常任务将通过 JavaScript 动态生成 -->
+          </div>
+        </div>
+        
+        <!-- 副本任务 -->
+        <div class="card">
+          <div class="card-title">⚔️ 副本与突破</div>
+          <div id="dungeon-list" style="display: flex; flex-direction: column; gap: 10px;">
+            <!-- 副本任务将通过 JavaScript 动态生成 -->
           </div>
         </div>
         
@@ -2394,7 +2411,9 @@
           </div>
           <div class="input-group">
             <label class="input-label">请输入您的姓名</label>
-            <input type="text" class="input" id="failed-player-name-input" placeholder="您的姓名" maxlength="20" onkeypress="if(event.key==='Enter'){event.preventDefault();app.saveFailedPracticeScore();}">
+            <input type="text" class="input" id="failed-player-name-input" placeholder="您的姓名" maxlength="20" list="failed-player-name-datalist" onkeypress="if(event.key==='Enter'){event.preventDefault();app.saveFailedPracticeScore();}">
+            <datalist id="failed-player-name-datalist">
+            </datalist>
           </div>
         </div>
         <div class="modal-footer" style="justify-content: center; flex-direction: column; gap: 10px;">
@@ -2432,7 +2451,9 @@
           </div>
           <div class="input-group">
             <label class="input-label">请输入您的姓名</label>
-            <input type="text" class="input" id="player-name-input" placeholder="您的姓名" maxlength="20" onkeypress="if(event.key==='Enter'){event.preventDefault();app.savePracticeScore();}">
+            <input type="text" class="input" id="player-name-input" placeholder="您的姓名" maxlength="20" list="player-name-datalist" onkeypress="if(event.key==='Enter'){event.preventDefault();app.savePracticeScore();}">
+            <datalist id="player-name-datalist">
+            </datalist>
           </div>
         </div>
         <div class="modal-footer" style="justify-content: center; flex-direction: column; gap: 10px;">
@@ -2463,7 +2484,9 @@
           </div>
           <div class="input-group">
             <label class="input-label">请输入您的姓名</label>
-            <input type="text" class="input" id="sentence-player-name-input" placeholder="您的姓名" maxlength="20" onkeypress="if(event.key==='Enter'){event.preventDefault();app.saveSentencePracticeScore();}">
+            <input type="text" class="input" id="sentence-player-name-input" placeholder="您的姓名" maxlength="20" list="sentence-player-name-datalist" onkeypress="if(event.key==='Enter'){event.preventDefault();app.saveSentencePracticeScore();}">
+            <datalist id="sentence-player-name-datalist">
+            </datalist>
           </div>
         </div>
         <div class="modal-footer" style="justify-content: center; flex-direction: column; gap: 10px;">
