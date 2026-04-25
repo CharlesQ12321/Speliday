@@ -1591,11 +1591,13 @@
     }
 
     .soulbone-gallery-cell {
-      padding: 8px;
+      padding: 12px 8px;
       border: 1px solid var(--border);
       text-align: center;
+      vertical-align: middle;
       cursor: pointer;
       transition: all 0.2s;
+      min-height: 70px;
     }
     .soulbone-gallery-cell:hover {
       background: rgba(155, 89, 182, 0.1);
@@ -1605,9 +1607,16 @@
       font-weight: 600;
     }
     .soulbone-gallery-cell.not-owned {
-      background: rgba(0, 0, 0, 0.05);
-      color: var(--text-muted);
+      background: rgba(0, 0, 0, 0.08);
+      color: var(--text-secondary);
       cursor: default;
+    }
+    .soulbone-gallery-cell.not-owned span {
+      display: block;
+      padding: 12px 0;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
     }
 
     .soulbone-warehouse-item {
@@ -2089,6 +2098,11 @@
           <div style="position: absolute; bottom: -30px; left: -30px; width: 150px; height: 150px; background: rgba(255,255,255,0.05); border-radius: 50%;"></div>
         </div>
 
+        <!-- 魂骨仓库按钮 -->
+        <button class="btn btn-block" style="background: linear-gradient(135deg, #9b59b6, #8e44ad); color: white; padding: 16px; font-size: 15px; font-weight: 600; margin-bottom: 20px;" onclick="app.openSoulBoneWarehouse()">
+          <i class="fa fa-diamond"></i> 魂骨仓库
+        </button>
+
         <!-- 个人统计 -->
         <div class="card">
           <div class="card-title">个人统计</div>
@@ -2133,20 +2147,6 @@
           <div class="card-title">最近练习记录</div>
           <div id="profile-recent-practices" style="display: flex; flex-direction: column; gap: 8px;">
             <!-- 最近练习记录将通过 JavaScript 动态生成 -->
-          </div>
-        </div>
-        
-        <!-- 魂骨仓库入口（阶段四：任务 5.4） -->
-        <div style="margin-top: 20px; margin-bottom: 16px;">
-          <div class="section-title">
-            <i class="fa fa-diamond" style="color: #9b59b6;"></i>
-            <span>魂骨仓库</span>
-            <button class="btn btn-primary" style="padding: 4px 12px; font-size: 12px; margin-left: auto;" onclick="app.openSoulBoneWarehouse()">
-              查看仓库
-            </button>
-          </div>
-          <div id="soul-bone-quick-view" style="font-size: 12px; color: var(--text-muted); text-align: center; padding: 8px;">
-            加载中...
           </div>
         </div>
         
@@ -2223,9 +2223,31 @@
           </div>
         </div>
 
-        <!-- 魂骨列表 -->
-        <div id="soulbone-warehouse-list" style="display: flex; flex-direction: column; gap: 10px;">
-          <!-- 动态生成 -->
+        <!-- 5×5 表格视图 -->
+        <div class="card" style="padding: 16px; overflow-x: auto;">
+          <table id="soulbone-warehouse-table" style="width: 100%; border-collapse: collapse; font-size: 12px;">
+            <thead>
+              <tr>
+                <th style="padding: 8px; border: 1px solid var(--border);">部位</th>
+                <th style="padding: 8px; border: 1px solid var(--border);">🐍 曼陀罗蛇</th>
+                <th style="padding: 8px; border: 1px solid var(--border);">🐰 柔骨兔</th>
+                <th style="padding: 8px; border: 1px solid var(--border);">🐯 邪眸白虎</th>
+                <th style="padding: 8px; border: 1px solid var(--border);">🐱 幽冥灵猫</th>
+                <th style="padding: 8px; border: 1px solid var(--border);">💎 七宝琉璃</th>
+              </tr>
+            </thead>
+            <tbody id="soulbone-warehouse-tbody">
+              <tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--text-muted);">加载中...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 魂骨详细列表 -->
+        <div class="card">
+          <div class="card-title">魂骨详情列表</div>
+          <div id="soulbone-warehouse-list" style="display: flex; flex-direction: column; gap: 10px;">
+            <!-- 动态生成 -->
+          </div>
         </div>
 
         <!-- 返回按钮 -->
@@ -2983,6 +3005,6 @@
   </div>
 
   <script src="image-editor.js"></script>
-  <script src="app.js?v=8"></script>
+  <script src="app.js?v=13"></script>
 </body>
 </html>

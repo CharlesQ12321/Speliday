@@ -5,7 +5,7 @@
 
 // Database Setup
 const db = new Dexie('SnapWordsDB');
-db.version(12).stores({
+db.version(13).stores({
   words: '++id, word, translation, *bookIds, errorCount, correctCount, isReported, createdAt, lastPracticed',
   books: '++id, bookId, bookName, createdAt',
   settings: 'key, value',
@@ -20,6 +20,31 @@ db.version(12).stores({
   dungeonProgress: '++id, playerId, dungeonId, isBreakthrough, completedCount, lastPlayed',
   // 魂骨系统（阶段四）
   soulBones: '++id, playerId, beastType, slot, isIdentified, isEquipped, obtainedAt'
+});
+
+// 数据库升级处理
+db.on('populate', () => {
+  console.log('数据库初始化完成');
+});
+
+// 监听数据库版本变化
+db.on('versionchange', (event) => {
+  console.log('数据库版本变更，需要刷新页面');
+  db.close();
+  window.location.reload();
+});
+
+// 确保数据库已打开
+db.open().catch((err) => {
+  console.error('数据库打开失败:', err);
+  if (err.name === 'VersionError') {
+    // 版本不匹配，删除旧数据库并重新创建
+    console.log('数据库版本不匹配，正在重建数据库...');
+    Dexie.delete('SnapWordsDB').then(() => {
+      console.log('旧数据库已删除，请刷新页面');
+      window.location.reload();
+    });
+  }
 });
 
 // 斗罗大陆等级系统配置 - 10 个大阶，100 个小级
@@ -1537,6 +1562,7 @@ const app = {
 
   // Navigation
   navigate(page) {
+    console.log('navigate 被调用，目标页面:', page);
     state.currentPage = page;
     
     // Update nav items
@@ -1553,7 +1579,14 @@ const app = {
     document.querySelectorAll('.page').forEach(p => {
       p.classList.remove('active');
     });
-    document.getElementById(`page-${page}`).classList.add('active');
+    const pageEl = document.getElementById(`page-${page}`);
+    if (pageEl) {
+      pageEl.classList.add('active');
+      console.log('页面已切换到:', page);
+    } else {
+      console.error('页面元素未找到: page-' + page);
+      return;
+    }
     
     // Refresh data
     if (page === 'library') {
@@ -1568,6 +1601,10 @@ const app = {
     } else if (page === 'settings') {
       // 加载高频错词设置
       this.loadHighErrorSettingsToPage();
+    } else if (page === 'soulbone-warehouse') {
+      // 立即渲染魂骨仓库
+      console.log('检测到魂骨仓库页面，准备渲染');
+      this.renderSoulBoneWarehouseImmediately();
     }
   },
 
@@ -4346,6 +4383,11 @@ ${text}`;
       profile = await getPlayerProfile(playerName);
     }
     
+    // 为新角色随机分配一个魂骨（如果还没有魂骨的话）
+    if (profile) {
+      await this.ensureRandomSoulBone(profile.id);
+    }
+    
     // 更新玩家信息
     document.getElementById('profile-player-name').textContent = playerName;
     
@@ -4973,26 +5015,53 @@ ${text}`;
     }
     
     // 确认删除
-    if (!confirm(`确定要删除角色"${playerName}"吗？\n\n删除后将清除：\n- 该角色的所有积分和等级\n- 该角色的所有练习记录\n\n此操作不可恢复！`)) {
+    if (!confirm(`确定要删除角色"${playerName}"吗？\n\n删除后将清除：\n- 该角色的所有积分和等级\n- 该角色的所有练习记录\n- 该角色的所有魂骨和任务数据\n\n此操作不可恢复！`)) {
       return;
     }
     
     try {
-      // 删除玩家档案
+      // 获取玩家档案
       const profile = await getPlayerProfile(playerName);
-      if (profile) {
-        await db.playerProfiles.delete(profile.id);
+      if (!profile) {
+        this.showToast('角色不存在', 'error');
+        return;
       }
       
-      // 删除该玩家的所有练习成绩
-      const scores = await db.practiceScores
-        .where('playerName')
-        .equals(playerName)
-        .toArray();
+      const profileId = profile.id;
       
+      // 删除该玩家的所有相关数据
+      // 1. 删除日常任务
+      const dailyTasks = await db.dailyTasks.where('playerId').equals(profileId).toArray();
+      for (const task of dailyTasks) {
+        await db.dailyTasks.delete(task.id);
+      }
+      
+      // 2. 删除魂骨
+      const soulBones = await db.soulBones.where('playerId').equals(profileId).toArray();
+      for (const bone of soulBones) {
+        await db.soulBones.delete(bone.id);
+      }
+      
+      // 3. 删除魂力档案
+      const spiritProfiles = await db.playerSpiritPower.where('playerId').equals(profileId).toArray();
+      for (const sp of spiritProfiles) {
+        await db.playerSpiritPower.delete(sp.id);
+      }
+      
+      // 4. 删除副本进度
+      const dungeonProgress = await db.dungeonProgress.where('playerId').equals(profileId).toArray();
+      for (const dp of dungeonProgress) {
+        await db.dungeonProgress.delete(dp.id);
+      }
+      
+      // 5. 删除练习成绩
+      const scores = await db.practiceScores.where('playerName').equals(playerName).toArray();
       for (const score of scores) {
         await db.practiceScores.delete(score.id);
       }
+      
+      // 6. 最后删除玩家档案
+      await db.playerProfiles.delete(profileId);
       
       this.showToast(`角色"${playerName}"已删除`, 'success');
       
@@ -5005,7 +5074,7 @@ ${text}`;
       }
     } catch (error) {
       console.error('删除角色失败:', error);
-      this.showToast('删除失败，请重试', 'error');
+      this.showToast('删除失败：' + error.message, 'error');
     }
   },
 
@@ -5084,9 +5153,27 @@ ${text}`;
 
       // 自动切换到新创建的角色
       await this.switchProfile(playerName);
+      
+      // 为新创建的角色随机分配一个魂骨（在角色切换后执行）
+      try {
+        const newProfile = await getPlayerProfile(playerName);
+        if (newProfile) {
+          const newBone = await generateSoulBone(newProfile.id, 1);
+          if (newBone) {
+            console.log(`为新角色"${playerName}"随机分配了一个魂骨:`, newBone);
+            // 延迟显示获得魂骨的提示
+            setTimeout(() => {
+              this.showSoulBoneAward(newBone);
+            }, 500);
+          }
+        }
+      } catch (boneError) {
+        console.error('分配魂骨失败:', boneError);
+        // 魂骨分配失败不影响角色创建
+      }
     } catch (error) {
       console.error('创建角色失败:', error);
-      this.showToast('创建角色失败，请重试', 'error');
+      this.showToast('创建角色失败：' + error.message, 'error');
     }
   },
 
@@ -6921,61 +7008,298 @@ ${wordList}
 
   // 打开魂骨仓库页面（阶段五：任务5.4）
   async openSoulBoneWarehouse() {
+    console.log('openSoulBoneWarehouse 被调用');
     const playerId = await this.getCurrentPlayerId();
+    console.log('获取到的 playerId:', playerId);
+    
     if (!playerId) {
       this.showToast('请先选择角色', 'warning');
       return;
     }
 
     this.navigate('soulbone-warehouse');
-    await this.renderSoulBoneWarehouse(playerId);
-    this.setupSoulBoneFilterButtons();
+    // navigate() 已经调用了 renderSoulBoneWarehouseImmediately()
+    // 现在异步加载真实数据
+    setTimeout(() => {
+      this.renderSoulBoneWarehouse(playerId);
+      this.setupSoulBoneFilterButtons();
+    }, 0);
   },
 
-  // 渲染魂骨仓库（阶段五：任务5.4）
-  async renderSoulBoneWarehouse(playerId, filter = 'all') {
-    let bones = await db.soulBones.where('playerId').equals(playerId).toArray();
-
-    // 应用筛选
-    if (filter === 'identified') {
-      bones = bones.filter(b => b.isIdentified);
-    } else if (filter === 'unidentified') {
-      bones = bones.filter(b => !b.isIdentified);
-    } else if (filter === 'equipped') {
-      bones = bones.filter(b => b.isEquipped);
-    } else if (SOUL_BONE_TYPES[filter]) {
-      bones = bones.filter(b => b.beastType === filter);
-    }
-
-    // 更新数量显示
-    const allBones = await db.soulBones.where('playerId').equals(playerId).toArray();
-    document.getElementById('soulbone-warehouse-count').textContent = `共 ${allBones.length} 个`;
-
-    // 渲染列表
-    const listEl = document.getElementById('soulbone-warehouse-list');
-    if (bones.length === 0) {
-      listEl.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-muted);">暂无魂骨</div>';
+  // 立即渲染魂骨仓库表格（同步，不调用数据库）
+  renderSoulBoneWarehouseImmediately() {
+    console.log('renderSoulBoneWarehouseImmediately 被调用');
+    const tbody = document.getElementById('soulbone-warehouse-tbody');
+    if (!tbody) {
+      console.error('tbody 未找到');
       return;
     }
 
-    listEl.innerHTML = bones.map(bone => {
-      const beastInfo = SOUL_BONE_TYPES[bone.beastType];
-      return `
-        <div class="soulbone-warehouse-item ${bone.isEquipped ? 'equipped' : ''}" onclick="app.openSoulBoneDetailModal('${bone.beastType}', '${bone.slot}')">
-          <div style="font-size: 32px;">${beastInfo.icon}</div>
-          <div style="flex: 1;">
-            <div style="font-weight: 600; color: ${beastInfo.color};">${bone.name}</div>
-            <div style="font-size: 12px; color: var(--text-muted);">${SOUL_BONE_SLOT_NAMES[bone.slot]} · ${bone.beastName}</div>
-            ${bone.isIdentified ? `
-              <div style="font-size: 13px; margin-top: 4px;">${bone.attributeIcon} ${bone.attributeName} +${bone.attributeValue}</div>
-            ` : '<div style="font-size: 12px; color: var(--text-muted);">未鉴定</div>'}
-          </div>
-          <div style="display: flex; flex-direction: column; gap: 4px;">
-            ${bone.isEquipped ? '<span style="font-size: 10px; padding: 2px 6px; background: #FFD700; color: #000; border-radius: 4px;">已装备</span>' : ''}
-          </div>
-        </div>
-      `;
-    }).join('');
+    const slots = SOUL_BONE_SLOTS;
+    const beasts = Object.keys(SOUL_BONE_TYPES);
+
+    // 清空
+    tbody.innerHTML = '';
+
+    // 逐行构建
+    for (let i = 0; i < slots.length; i++) {
+      const slot = slots[i];
+      const tr = document.createElement('tr');
+
+      // 部位列
+      const tdName = document.createElement('td');
+      tdName.style.padding = '12px 8px';
+      tdName.style.border = '1px solid var(--border)';
+      tdName.style.fontWeight = '600';
+      tdName.style.textAlign = 'center';
+      tdName.style.verticalAlign = 'middle';
+      tdName.style.whiteSpace = 'nowrap';
+      tdName.style.background = 'var(--bg-secondary)';
+      tdName.textContent = SOUL_BONE_SLOT_NAMES[slot];
+      tr.appendChild(tdName);
+
+      // 5种魂兽列
+      for (let j = 0; j < beasts.length; j++) {
+        const beast = beasts[j];
+        const beastInfo = SOUL_BONE_TYPES[beast];
+
+        const td = document.createElement('td');
+        td.className = 'soulbone-gallery-cell not-owned';
+        td.style.padding = '12px 8px';
+        td.style.border = '1px solid var(--border)';
+        td.style.textAlign = 'center';
+        td.style.verticalAlign = 'middle';
+        td.style.minHeight = '70px';
+
+        const span = document.createElement('span');
+        span.style.display = 'block';
+        span.style.padding = '10px 0';
+        span.style.fontSize = '12px';
+        span.style.color = 'var(--text-muted)';
+        span.textContent = '未获得';
+        td.appendChild(span);
+
+        tr.appendChild(td);
+      }
+
+      tbody.appendChild(tr);
+    }
+
+    console.log('表格立即渲染完成，共 ' + slots.length + ' 行');
+
+    // 同时渲染详情列表为空
+    const listEl = document.getElementById('soulbone-warehouse-list');
+    if (listEl) {
+      listEl.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-muted);">暂无魂骨</div>';
+    }
+  },
+
+  // 检查并随机分配一个魂骨给角色（如果角色还没有魂骨的话）
+  async ensureRandomSoulBone(playerId) {
+    const existingBones = await db.soulBones.where('playerId').equals(playerId).toArray();
+    
+    if (existingBones.length === 0) {
+      // 随机生成一个魂骨
+      const newBone = await generateSoulBone(playerId, 1); // 难度1作为默认难度
+      
+      if (newBone) {
+        console.log(`为角色 ${playerId} 随机分配了一个魂骨:`, newBone);
+        // 显示获得魂骨的提示
+        this.showSoulBoneAward(newBone);
+      }
+    }
+  },
+
+  // 渲染魂骨仓库（阶段五：任务5.4）- 异步加载真实数据
+  async renderSoulBoneWarehouse(playerId, filter = 'all') {
+    console.log('renderSoulBoneWarehouse 开始执行, playerId:', playerId, 'filter:', filter);
+    
+    try {
+      let bones = await db.soulBones.where('playerId').equals(playerId).toArray();
+      console.log('查询到魂骨数量:', bones.length);
+  
+      // 应用筛选
+      let filteredBones = bones;
+      if (filter === 'identified') {
+        filteredBones = bones.filter(b => b.isIdentified);
+      } else if (filter === 'unidentified') {
+        filteredBones = bones.filter(b => !b.isIdentified);
+      } else if (filter === 'equipped') {
+        filteredBones = bones.filter(b => b.isEquipped);
+      } else if (SOUL_BONE_TYPES[filter]) {
+        filteredBones = bones.filter(b => b.beastType === filter);
+      }
+      console.log('筛选后的魂骨数量:', filteredBones.length);
+  
+      // 更新数量显示
+      const countEl = document.getElementById('soulbone-warehouse-count');
+      if (countEl) countEl.textContent = `共 ${bones.length} 个`;
+  
+      // ===== 渲染5×7表格视图（5种魂兽 × 7个部位）=====
+      const tbody = document.getElementById('soulbone-warehouse-tbody');
+      if (!tbody) {
+        console.error('魂骨仓库表格tbody元素未找到');
+        return;
+      }
+      console.log('tbody元素已找到');
+      
+      const slots = SOUL_BONE_SLOTS;
+      const beasts = Object.keys(SOUL_BONE_TYPES);
+      console.log('部位数量:', slots.length, '魂兽数量:', beasts.length);
+
+      // 清空表格
+      tbody.innerHTML = '';
+
+      // 逐行添加数据
+      for (let i = 0; i < slots.length; i++) {
+        const slot = slots[i];
+        const tr = document.createElement('tr');
+        
+        // 部位列
+        const th = document.createElement('td');
+        th.style.padding = '12px 8px';
+        th.style.border = '1px solid var(--border)';
+        th.style.fontWeight = '600';
+        th.style.textAlign = 'center';
+        th.style.verticalAlign = 'middle';
+        th.style.whiteSpace = 'nowrap';
+        th.style.background = 'var(--bg-secondary)';
+        th.textContent = SOUL_BONE_SLOT_NAMES[slot];
+        tr.appendChild(th);
+        
+        // 5种魂兽列
+        for (let j = 0; j < beasts.length; j++) {
+          const beast = beasts[j];
+          const slotBones = filteredBones.filter(b => b.beastType === beast && b.slot === slot);
+          const beastInfo = SOUL_BONE_TYPES[beast];
+          const boneNames = SOUL_BONE_NAMES[beast];
+          const displayName = boneNames ? (boneNames[slot] || '???') : '???';
+          
+          const td = document.createElement('td');
+          td.className = 'soulbone-gallery-cell' + (slotBones.length > 0 ? ' owned' : ' not-owned');
+          td.style.padding = '12px 8px';
+          td.style.border = '1px solid var(--border)';
+          td.style.textAlign = 'center';
+          td.style.verticalAlign = 'middle';
+          
+          if (slotBones.length === 0) {
+            const span = document.createElement('span');
+            span.textContent = '未获得';
+            td.appendChild(span);
+          } else {
+            td.style.cursor = 'pointer';
+            td.onclick = () => this.openSoulBoneDetailModal(beast, slot);
+            
+            const iconDiv = document.createElement('div');
+            iconDiv.style.fontSize = '18px';
+            iconDiv.style.marginBottom = '4px';
+            iconDiv.textContent = beastInfo.icon;
+            td.appendChild(iconDiv);
+            
+            const nameDiv = document.createElement('div');
+            nameDiv.style.fontSize = '11px';
+            nameDiv.style.fontWeight = '600';
+            nameDiv.style.color = beastInfo.color;
+            nameDiv.style.lineHeight = '1.3';
+            nameDiv.textContent = displayName;
+            td.appendChild(nameDiv);
+            
+            const countDiv = document.createElement('div');
+            countDiv.style.fontSize = '10px';
+            countDiv.style.color = 'var(--text-muted)';
+            countDiv.style.marginTop = '3px';
+            countDiv.textContent = slotBones.length + '个';
+            td.appendChild(countDiv);
+            
+            const displayBones = slotBones.slice(0, 2);
+            displayBones.forEach(b => {
+              if (b.isEquipped) {
+                const eqDiv = document.createElement('div');
+                eqDiv.style.fontSize = '9px';
+                eqDiv.style.color = '#FFD700';
+                eqDiv.style.marginTop = '2px';
+                eqDiv.textContent = '★装备';
+                td.appendChild(eqDiv);
+              }
+            });
+            
+            const remaining = slotBones.length - 2;
+            if (remaining > 0) {
+              const remDiv = document.createElement('div');
+              remDiv.style.fontSize = '10px';
+              remDiv.style.color = 'var(--primary)';
+              remDiv.style.marginTop = '2px';
+              remDiv.textContent = '+' + remaining;
+              td.appendChild(remDiv);
+            }
+          }
+          
+          tr.appendChild(td);
+        }
+        
+        tbody.appendChild(tr);
+      }
+  
+      console.log('表格已渲染到DOM，共' + slots.length + '行');
+  
+      // ===== 渲染魂骨详情列表 =====
+      const listEl = document.getElementById('soulbone-warehouse-list');
+      if (filteredBones.length === 0) {
+        if (listEl) listEl.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-muted);">暂无匹配的魂骨</div>';
+        return;
+      }
+  
+      if (listEl) {
+        listEl.innerHTML = '';
+        filteredBones.forEach(bone => {
+          const beastInfo = SOUL_BONE_TYPES[bone.beastType];
+          const itemDiv = document.createElement('div');
+          itemDiv.className = 'soulbone-warehouse-item' + (bone.isEquipped ? ' equipped' : '');
+          itemDiv.onclick = () => this.openSoulBoneDetailModal(bone.beastType, bone.slot);
+          
+          const iconDiv = document.createElement('div');
+          iconDiv.style.fontSize = '32px';
+          iconDiv.textContent = beastInfo.icon;
+          itemDiv.appendChild(iconDiv);
+          
+          const contentDiv = document.createElement('div');
+          contentDiv.style.flex = '1';
+          
+          const nameDiv = document.createElement('div');
+          nameDiv.style.fontWeight = '600';
+          nameDiv.style.color = beastInfo.color;
+          nameDiv.textContent = bone.name;
+          contentDiv.appendChild(nameDiv);
+          
+          const descDiv = document.createElement('div');
+          descDiv.style.fontSize = '12px';
+          descDiv.style.color = 'var(--text-muted)';
+          descDiv.textContent = SOUL_BONE_SLOT_NAMES[bone.slot] + ' · ' + bone.beastName;
+          contentDiv.appendChild(descDiv);
+          
+          if (bone.isIdentified) {
+            const attrDiv = document.createElement('div');
+            attrDiv.style.fontSize = '13px';
+            attrDiv.style.marginTop = '4px';
+            attrDiv.textContent = bone.attributeIcon + ' ' + bone.attributeName + ' +' + bone.attributeValue;
+            contentDiv.appendChild(attrDiv);
+          } else {
+            const attrDiv = document.createElement('div');
+            attrDiv.style.fontSize = '12px';
+            attrDiv.style.color = 'var(--text-muted)';
+            attrDiv.textContent = '未鉴定';
+            contentDiv.appendChild(attrDiv);
+          }
+          
+          itemDiv.appendChild(contentDiv);
+          listEl.appendChild(itemDiv);
+        });
+      }
+      
+      console.log('renderSoulBoneWarehouse 执行完成');
+    } catch (error) {
+      console.error('renderSoulBoneWarehouse 出错:', error);
+    }
   },
 
   // 设置魂骨仓库筛选按钮

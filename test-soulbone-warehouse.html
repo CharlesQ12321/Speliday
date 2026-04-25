@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>魂骨仓库测试 - 验证渲染逻辑</title>
+  <style>
+    :root {
+      --border: #e2e8f0;
+      --text-muted: #a0aec0;
+      --text-secondary: #718096;
+      --bg-secondary: #f7fafc;
+      --primary: #667eea;
+      --bg-tertiary: #edf2f7;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 20px; background: #f0f2f5; }
+    .card { background: white; border-radius: 8px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { padding: 12px 8px; border: 1px solid var(--border); text-align: center; vertical-align: middle; }
+    th { background: var(--bg-secondary); font-weight: 600; }
+    .soulbone-gallery-cell { min-height: 70px; }
+    .soulbone-gallery-cell.owned { background: rgba(155, 89, 182, 0.15); font-weight: 600; cursor: pointer; }
+    .soulbone-gallery-cell.not-owned { background: rgba(0, 0, 0, 0.08); cursor: default; }
+    .soulbone-gallery-cell.not-owned span { display: block; padding: 12px 0; font-size: 13px; font-weight: 500; color: var(--text-muted); }
+    .soulbone-warehouse-item { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; align-items: center; gap: 12px; margin-bottom: 10px; cursor: pointer; }
+    .soulbone-warehouse-item:hover { border-color: #9b59b6; box-shadow: 0 2px 8px rgba(155, 89, 182, 0.2); }
+    button { margin: 5px; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; background: #667eea; color: white; font-size: 14px; }
+    button:hover { opacity: 0.9; }
+    #status { padding: 10px; margin: 10px 0; background: #e8f5e9; border-radius: 4px; border: 1px solid #a5d6a7; }
+    h1 { color: #333; }
+  </style>
+</head>
+<body>
+  <h1>🔮 魂骨仓库渲染测试</h1>
+  <div id="status">✅ 页面加载完成，点击下方按钮开始测试</div>
+  
+  <div>
+    <button onclick="testEmpty()">测试空表格（立即渲染）</button>
+    <button onclick="testWithBones()">测试有数据表格</button>
+    <button onclick="testList()">测试详情列表</button>
+  </div>
+  
+  <div class="card">
+    <table id="test-table">
+      <thead>
+        <tr>
+          <th>部位</th>
+          <th>🐍 曼陀罗蛇</th>
+          <th>🐰 柔骨兔</th>
+          <th>🐯 邪眸白虎</th>
+          <th>🐱 幽冥灵猫</th>
+          <th>💎 七宝琉璃</th>
+        </tr>
+      </thead>
+      <tbody id="test-tbody">
+        <tr><td colspan="6" style="text-align:center;padding:20px;color:#a0aec0;">点击按钮开始测试</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div style="font-weight:600;margin-bottom:12px;">魂骨详情列表</div>
+    <div id="test-list"></div>
+  </div>
+
+  <script>
+    const SOUL_BONE_TYPES = {
+      mantuo: { name: '曼陀罗蛇', color: '#8B008B', icon: '🐍' },
+      rougu: { name: '柔骨兔', color: '#FF69B4', icon: '🐰' },
+      xiehou: { name: '邪眸白虎', color: '#FF4500', icon: '🐯' },
+      youming: { name: '幽冥灵猫', color: '#4B0082', icon: '🐱' },
+      qibao: { name: '七宝琉璃', color: '#FFD700', icon: '💎' }
+    };
+
+    const SOUL_BONE_NAMES = {
+      mantuo: { head: '毒瞳蛇皇颅', body: '龙鳞蛇甲', left_arm: '噬毒蟒臂', right_arm: '裂风蟒臂', left_leg: '疾风蛇行靴', right_leg: '蛇影追风靴', external: '蛇魔蛛矛' },
+      rougu: { head: '月魄兔灵冠', body: '玉骨冰肌衣', left_arm: '粉玉柔臂', right_arm: '凝霜兔臂', left_leg: '踏月追云靴', right_leg: '冰晶兔腿', external: '冰晶兔绒翼' },
+      xiehou: { head: '霸虎啸天冠', body: '金刚虎躯铠', left_arm: '裂风虎臂', right_arm: '狂虎碎岩臂', left_leg: '狂虎奔雷靴', right_leg: '白虎踏雪靴', external: '白虎金刚翼' },
+      youming: { head: '影魅幽魂冠', body: '夜行影魅袍', left_arm: '瞬影猫臂', right_arm: '幽冥猎手臂', left_leg: '幽灵鬼影迷', right_leg: '暗夜潜行靴', external: '幽冥影刃' },
+      qibao: { head: '琉璃幻心冕', body: '七彩云烟铠', left_arm: '玲珑水晶臂', right_arm: '七宝琉璃臂', left_leg: '流光飞羽靴', right_leg: '彩云追月靴', external: '七宝玲珑塔' }
+    };
+
+    const SOUL_BONE_SLOTS = ['head', 'body', 'left_arm', 'right_arm', 'left_leg', 'right_leg', 'external'];
+    const SOUL_BONE_SLOT_NAMES = { head: '头骨', body: '躯干骨', left_arm: '左臂骨', right_arm: '右臂骨', left_leg: '左腿骨', right_leg: '右腿骨', external: '外附魂骨' };
+
+    const statusEl = document.getElementById('status');
+    const tbodyEl = document.getElementById('test-tbody');
+    const listEl = document.getElementById('test-list');
+
+    function testEmpty() {
+      statusEl.textContent = '正在渲染空表格...';
+      tbodyEl.innerHTML = '';
+      
+      const slots = SOUL_BONE_SLOTS;
+      const beasts = Object.keys(SOUL_BONE_TYPES);
+
+      for (let i = 0; i < slots.length; i++) {
+        const slot = slots[i];
+        const tr = document.createElement('tr');
+
+        const tdName = document.createElement('td');
+        tdName.style.padding = '12px 8px';
+        tdName.style.border = '1px solid var(--border)';
+        tdName.style.fontWeight = '600';
+        tdName.style.textAlign = 'center';
+        tdName.style.verticalAlign = 'middle';
+        tdName.style.whiteSpace = 'nowrap';
+        tdName.style.background = 'var(--bg-secondary)';
+        tdName.textContent = SOUL_BONE_SLOT_NAMES[slot];
+        tr.appendChild(tdName);
+
+        for (let j = 0; j < beasts.length; j++) {
+          const beast = beasts[j];
+          const beastInfo = SOUL_BONE_TYPES[beast];
+
+          const td = document.createElement('td');
+          td.className = 'soulbone-gallery-cell not-owned';
+          td.style.padding = '12px 8px';
+          td.style.border = '1px solid var(--border)';
+          td.style.textAlign = 'center';
+          td.style.verticalAlign = 'middle';
+          td.style.minHeight = '70px';
+
+          const span = document.createElement('span');
+          span.style.display = 'block';
+          span.style.padding = '10px 0';
+          span.style.fontSize = '12px';
+          span.style.color = 'var(--text-muted)';
+          span.textContent = '未获得';
+          td.appendChild(span);
+
+          tr.appendChild(td);
+        }
+
+        tbodyEl.appendChild(tr);
+      }
+
+      listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">暂无魂骨</div>';
+      statusEl.textContent = '✅ 空表格渲染完成！共 ' + slots.length + ' 行 × ' + (beasts.length + 1) + ' 列';
+    }
+
+    function testWithBones() {
+      const mockBones = [
+        { id: 1, beastType: 'mantuo', slot: 'head', isEquipped: true, isIdentified: true, name: '毒瞳蛇皇颅', attributeName: '生命', attributeIcon: '❤️', attributeValue: 15 },
+        { id: 2, beastType: 'mantuo', slot: 'head', isEquipped: false, isIdentified: false, name: '毒瞳蛇皇颅', attributeName: '', attributeIcon: '', attributeValue: 0 },
+        { id: 3, beastType: 'rougu', slot: 'body', isEquipped: true, isIdentified: true, name: '玉骨冰肌衣', attributeName: '防御', attributeIcon: '🛡️', attributeValue: 12 },
+        { id: 4, beastType: 'xiehou', slot: 'left_arm', isEquipped: false, isIdentified: false, name: '裂风虎臂', attributeName: '', attributeIcon: '', attributeValue: 0 },
+        { id: 5, beastType: 'youming', slot: 'right_leg', isEquipped: true, isIdentified: true, name: '暗夜潜行靴', attributeName: '闪避', attributeIcon: '💨', attributeValue: 6 },
+        { id: 6, beastType: 'qibao', slot: 'external', isEquipped: false, isIdentified: false, name: '七宝玲珑塔', attributeName: '', attributeIcon: '', attributeValue: 0 },
+      ];
+
+      statusEl.textContent = '正在渲染有数据表格...';
+      tbodyEl.innerHTML = '';
+
+      const slots = SOUL_BONE_SLOTS;
+      const beasts = Object.keys(SOUL_BONE_TYPES);
+
+      for (let i = 0; i < slots.length; i++) {
+        const slot = slots[i];
+        const tr = document.createElement('tr');
+
+        const tdName = document.createElement('td');
+        tdName.style.padding = '12px 8px';
+        tdName.style.border = '1px solid var(--border)';
+        tdName.style.fontWeight = '600';
+        tdName.style.textAlign = 'center';
+        tdName.style.verticalAlign = 'middle';
+        tdName.style.whiteSpace = 'nowrap';
+        tdName.style.background = 'var(--bg-secondary)';
+        tdName.textContent = SOUL_BONE_SLOT_NAMES[slot];
+        tr.appendChild(tdName);
+
+        for (let j = 0; j < beasts.length; j++) {
+          const beast = beasts[j];
+          const slotBones = mockBones.filter(b => b.beastType === beast && b.slot === slot);
+          const beastInfo = SOUL_BONE_TYPES[beast];
+          const boneNames = SOUL_BONE_NAMES[beast];
+          const displayName = boneNames ? (boneNames[slot] || '???') : '???';
+
+          const td = document.createElement('td');
+
+          if (slotBones.length === 0) {
+            td.className = 'soulbone-gallery-cell not-owned';
+            td.style.padding = '12px 8px';
+            td.style.border = '1px solid var(--border)';
+            td.style.textAlign = 'center';
+            td.style.verticalAlign = 'middle';
+
+            const span = document.createElement('span');
+            span.style.display = 'block';
+            span.style.padding = '10px 0';
+            span.style.fontSize = '12px';
+            span.style.color = 'var(--text-muted)';
+            span.textContent = '未获得';
+            td.appendChild(span);
+          } else {
+            td.className = 'soulbone-gallery-cell owned';
+            td.style.padding = '12px 8px';
+            td.style.border = '1px solid var(--border)';
+            td.style.textAlign = 'center';
+            td.style.verticalAlign = 'middle';
+            td.style.cursor = 'pointer';
+
+            const iconDiv = document.createElement('div');
+            iconDiv.style.fontSize = '18px';
+            iconDiv.style.marginBottom = '4px';
+            iconDiv.textContent = beastInfo.icon;
+            td.appendChild(iconDiv);
+
+            const nameDiv = document.createElement('div');
+            nameDiv.style.fontSize = '11px';
+            nameDiv.style.fontWeight = '600';
+            nameDiv.style.color = beastInfo.color;
+            nameDiv.style.lineHeight = '1.3';
+            nameDiv.textContent = displayName;
+            td.appendChild(nameDiv);
+
+            const countDiv = document.createElement('div');
+            countDiv.style.fontSize = '10px';
+            countDiv.style.color = 'var(--text-muted)';
+            countDiv.style.marginTop = '3px';
+            countDiv.textContent = slotBones.length + '个';
+            td.appendChild(countDiv);
+
+            const displayBones = slotBones.slice(0, 2);
+            displayBones.forEach(b => {
+              if (b.isEquipped) {
+                const eqDiv = document.createElement('div');
+                eqDiv.style.fontSize = '9px';
+                eqDiv.style.color = '#FFD700';
+                eqDiv.style.marginTop = '2px';
+                eqDiv.textContent = '★装备';
+                td.appendChild(eqDiv);
+              }
+            });
+
+            const remaining = slotBones.length - 2;
+            if (remaining > 0) {
+              const remDiv = document.createElement('div');
+              remDiv.style.fontSize = '10px';
+              remDiv.style.color = 'var(--primary)';
+              remDiv.style.marginTop = '2px';
+              remDiv.textContent = '+' + remaining;
+              td.appendChild(remDiv);
+            }
+          }
+
+          tr.appendChild(td);
+        }
+
+        tbodyEl.appendChild(tr);
+      }
+
+      statusEl.textContent = '✅ 有数据表格渲染完成！';
+      testListWithData(mockBones);
+    }
+
+    function testList() {
+      const mockBones = [
+        { id: 1, beastType: 'mantuo', slot: 'head', isEquipped: true, isIdentified: true, name: '毒瞳蛇皇颅', attributeName: '生命', attributeIcon: '❤️', attributeValue: 15 },
+        { id: 2, beastType: 'mantuo', slot: 'head', isEquipped: false, isIdentified: false, name: '毒瞳蛇皇颅', attributeName: '', attributeIcon: '', attributeValue: 0 },
+        { id: 3, beastType: 'rougu', slot: 'body', isEquipped: true, isIdentified: true, name: '玉骨冰肌衣', attributeName: '防御', attributeIcon: '🛡️', attributeValue: 12 },
+      ];
+      testListWithData(mockBones);
+    }
+
+    function testListWithData(bones) {
+      listEl.innerHTML = '';
+      bones.forEach(bone => {
+        const beastInfo = SOUL_BONE_TYPES[bone.beastType];
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'soulbone-warehouse-item' + (bone.isEquipped ? ' equipped' : '');
+        
+        const iconDiv = document.createElement('div');
+        iconDiv.style.fontSize = '32px';
+        iconDiv.textContent = beastInfo.icon;
+        itemDiv.appendChild(iconDiv);
+        
+        const contentDiv = document.createElement('div');
+        contentDiv.style.flex = '1';
+        
+        const nameDiv = document.createElement('div');
+        nameDiv.style.fontWeight = '600';
+        nameDiv.style.color = beastInfo.color;
+        nameDiv.textContent = bone.name;
+        contentDiv.appendChild(nameDiv);
+        
+        const descDiv = document.createElement('div');
+        descDiv.style.fontSize = '12px';
+        descDiv.style.color = 'var(--text-muted)';
+        descDiv.textContent = SOUL_BONE_SLOT_NAMES[bone.slot] + ' · ' + SOUL_BONE_TYPES[bone.beastType].name;
+        contentDiv.appendChild(descDiv);
+        
+        if (bone.isIdentified) {
+          const attrDiv = document.createElement('div');
+          attrDiv.style.fontSize = '13px';
+          attrDiv.style.marginTop = '4px';
+          attrDiv.textContent = bone.attributeIcon + ' ' + bone.attributeName + ' +' + bone.attributeValue;
+          contentDiv.appendChild(attrDiv);
+        } else {
+          const attrDiv = document.createElement('div');
+          attrDiv.style.fontSize = '12px';
+          attrDiv.style.color = 'var(--text-muted)';
+          attrDiv.textContent = '未鉴定';
+          contentDiv.appendChild(attrDiv);
+        }
+        
+        itemDiv.appendChild(contentDiv);
+        listEl.appendChild(itemDiv);
+      });
+      
+      statusEl.textContent = '✅ 详情列表渲染完成！共 ' + bones.length + ' 个魂骨';
+    }
+  </script>
+</body>
+</html>
