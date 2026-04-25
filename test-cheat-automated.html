@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>魂骨作弊码自动化测试</title>
+  <script src="https://unpkg.com/dexie@3.2.4/dist/dexie.min.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      color: #333;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    h1 {
+      color: white;
+      text-align: center;
+      margin-bottom: 30px;
+      font-size: 2.5em;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+    }
+    .card {
+      background: white;
+      border-radius: 16px;
+      padding: 30px;
+      margin: 20px 0;
+      box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+    }
+    h2 {
+      color: #667eea;
+      border-bottom: 3px solid #667eea;
+      padding-bottom: 10px;
+      margin-top: 0;
+    }
+    .grid-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+      font-size: 14px;
+    }
+    .grid-table th, .grid-table td {
+      border: 2px solid #e0e0e0;
+      padding: 12px 8px;
+      text-align: center;
+      transition: all 0.2s;
+    }
+    .grid-table th {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      font-weight: 600;
+    }
+    .grid-table td {
+      cursor: pointer;
+      position: relative;
+    }
+    .grid-table td:hover {
+      background: #e3f2fd;
+      transform: scale(1.02);
+    }
+    .grid-table td.tested-success {
+      background: #c8e6c9;
+    }
+    .grid-table td.tested-fail {
+      background: #ffcdd2;
+    }
+    .grid-table td.testing {
+      background: #fff9c4;
+      animation: pulse 0.5s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+    .cheat-code {
+      font-family: 'Courier New', monospace;
+      background: #f5f5f5;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-weight: bold;
+      color: #667eea;
+      display: inline-block;
+      margin: 2px;
+    }
+    .result-box {
+      margin-top: 20px;
+      padding: 20px;
+      border-radius: 12px;
+      min-height: 60px;
+    }
+    .result-box.success {
+      background: #e8f5e9;
+      border-left: 5px solid #4caf50;
+    }
+    .result-box.error {
+      background: #ffebee;
+      border-left: 5px solid #f44336;
+    }
+    .result-box.info {
+      background: #e3f2fd;
+      border-left: 5px solid #2196f3;
+    }
+    .result-box.warning {
+      background: #fff3e0;
+      border-left: 5px solid #ff9800;
+    }
+    .test-btn {
+      padding: 14px 28px;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 600;
+      margin: 10px 8px;
+      transition: all 0.3s;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .test-btn:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 6px 12px rgba(0,0,0,0.2);
+    }
+    .btn-primary { background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+    .btn-success { background: linear-gradient(135deg, #4caf50, #8bc34a); color: white; }
+    .btn-warning { background: linear-gradient(135deg, #ff9800, #ffc107); color: white; }
+    .btn-danger { background: linear-gradient(135deg, #f44336, #e91e63); color: white; }
+    .progress-bar {
+      width: 100%;
+      height: 35px;
+      background: #e0e0e0;
+      border-radius: 18px;
+      overflow: hidden;
+      margin: 20px 0;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #667eea, #764ba2);
+      transition: width 0.3s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .log-entry {
+      padding: 10px 15px;
+      margin: 6px 0;
+      border-radius: 8px;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      word-wrap: break-word;
+    }
+    .log-entry.success {
+      background: #e8f5e9;
+      border-left: 4px solid #4caf50;
+    }
+    .log-entry.error {
+      background: #ffebee;
+      border-left: 4px solid #f44336;
+    }
+    .log-entry.info {
+      background: #e3f2fd;
+      border-left: 4px solid #2196f3;
+    }
+    .log-entry.warning {
+      background: #fff3e0;
+      border-left: 4px solid #ff9800;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 15px;
+      margin: 20px 0;
+    }
+    .stat-card {
+      background: linear-gradient(135deg, #f5f7fa, #c3cfe2);
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+    }
+    .stat-card .number {
+      font-size: 2.5em;
+      font-weight: 700;
+      margin: 10px 0;
+    }
+    .stat-card .label {
+      font-size: 0.9em;
+      color: #666;
+    }
+    .stat-success .number { color: #4caf50; }
+    .stat-fail .number { color: #f44336; }
+    .stat-total .number { color: #2196f3; }
+    .stat-percent .number { color: #ff9800; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔮 魂骨作弊码自动化测试</h1>
+    
+    <div class="card">
+      <h2>📊 5×5 魂骨表格对照</h2>
+      <table class="grid-table" id="gridTable">
+        <thead>
+          <tr>
+            <th>部位\魂兽</th>
+            <th>1<br>🐍曼陀罗蛇</th>
+            <th>2<br>🐰柔骨兔</th>
+            <th>3<br>🐯邪眸白虎</th>
+            <th>4<br>🐱幽冥灵猫</th>
+            <th>5<br>💎七宝琉璃</th>
+          </tr>
+        </thead>
+        <tbody id="gridBody"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>🚀 测试控制</h2>
+      <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px;">
+        <button class="test-btn btn-primary" onclick="testAllCodes()">
+          🧪 测试全部25个作弊码
+        </button>
+        <button class="test-btn btn-warning" onclick="testRandomCodes()">
+          🎲 随机测试5个
+        </button>
+        <button class="test-btn btn-danger" onclick="clearTestResults()">
+          🗑️ 清除测试结果
+        </button>
+        <button class="test-btn btn-success" onclick="clearAllBones()">
+          🧹 清空所有魂骨
+        </button>
+      </div>
+      
+      <div class="stats" id="statsContainer">
+        <div class="stat-card stat-total">
+          <div class="label">总测试数</div>
+          <div class="number" id="statTotal">0</div>
+        </div>
+        <div class="stat-card stat-success">
+          <div class="label">成功</div>
+          <div class="number" id="statSuccess">0</div>
+        </div>
+        <div class="stat-card stat-fail">
+          <div class="label">失败</div>
+          <div class="number" id="statFail">0</div>
+        </div>
+        <div class="stat-card stat-percent">
+          <div class="label">成功率</div>
+          <div class="number" id="statPercent">0%</div>
+        </div>
+      </div>
+      
+      <div id="progressContainer" style="display: none;">
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill" style="width: 0%">0%</div>
+        </div>
+      </div>
+      
+      <div class="result-box info" id="resultBox">
+        点击上方按钮开始测试...
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>📝 测试日志</h2>
+      <div id="logContainer" style="max-height: 500px; overflow-y: auto;"></div>
+    </div>
+  </div>
+
+  <script>
+    // 数据库初始化
+    const db = new Dexie('speliday_db');
+    db.version(13).stores({
+      players: '++id, name, createdAt',
+      characters: '++id, playerId, name, level, soulPower',
+      soulBones: '++id, playerId, beastType, slot, isIdentified, isEquipped'
+    });
+
+    // 常量定义（与应用一致）
+    const SOUL_BONE_TYPES = {
+      mantuo: { name: '曼陀罗蛇', icon: '🐍', color: '#8B008B' },
+      rougu: { name: '柔骨兔', icon: '🐰', color: '#FF69B4' },
+      xiehou: { name: '邪眸白虎', icon: '🐯', color: '#FF4500' },
+      youming: { name: '幽冥灵猫', icon: '🐱', color: '#4B0082' },
+      qibao: { name: '七宝琉璃', icon: '💎', color: '#FFD700' }
+    };
+
+    const SOUL_BONE_SLOTS = ['head', 'body', 'left_arm', 'right_leg', 'external'];
+    const SOUL_BONE_SLOT_NAMES = {
+      head: '头骨',
+      body: '躯干骨',
+      left_arm: '左臂骨',
+      right_leg: '右腿骨',
+      external: '外附魂骨'
+    };
+
+    const SOUL_BONE_NAMES = {
+      mantuo: {
+        head: '毒瞳蛇皇颅',
+        body: '龙鳞蛇甲',
+        left_arm: '噬毒蟒臂',
+        right_leg: '疾风蛇行靴',
+        external: '蛇魔蛛矛'
+      },
+      rougu: {
+        head: '柔骨兔颅',
+        body: '柔骨兔躯干骨',
+        left_arm: '柔骨兔左臂骨',
+        right_leg: '柔骨兔右腿骨',
+        external: '柔骨兔外附魂骨'
+      },
+      xiehou: {
+        head: '白虎颅',
+        body: '白虎躯干骨',
+        left_arm: '白虎左臂骨',
+        right_leg: '白虎右腿骨',
+        external: '白虎外附魂骨'
+      },
+      youming: {
+        head: '灵猫颅',
+        body: '灵猫躯干骨',
+        left_arm: '灵猫左臂骨',
+        right_leg: '灵猫右腿骨',
+        external: '灵猫外附魂骨'
+      },
+      qibao: {
+        head: '琉璃颅',
+        body: '琉璃躯干骨',
+        left_arm: '琉璃左臂骨',
+        right_leg: '琉璃右腿骨',
+        external: '琉璃外附魂骨'
+      }
+    };
+
+    const SOUL_BONE_ATTRIBUTES = [
+      { type: 'attack', name: '攻击力', icon: '⚔️', min: 10, max: 50 },
+      { type: 'defense', name: '防御力', icon: '🛡️', min: 5, max: 30 },
+      { type: 'speed', name: '速度', icon: '💨', min: 5, max: 25 },
+      { type: 'accuracy', name: '命中率', icon: '🎯', min: 2, max: 15 },
+      { type: 'critical', name: '暴击率', icon: '💥', min: 1, max: 10 }
+    ];
+
+    const beastTypes = ['mantuo', 'rougu', 'xiehou', 'youming', 'qibao'];
+    const testPlayerId = 'test-player-cheat-code';
+
+    // 测试统计
+    let testStats = {
+      total: 0,
+      success: 0,
+      fail: 0
+    };
+
+    // 生成5×5表格
+    function generateGrid() {
+      const tbody = document.getElementById('gridBody');
+      tbody.innerHTML = '';
+      
+      for (let y = 0; y < SOUL_BONE_SLOTS.length; y++) {
+        const tr = document.createElement('tr');
+        
+        const th = document.createElement('th');
+        th.innerHTML = `${y + 1}<br>${SOUL_BONE_SLOT_NAMES[SOUL_BONE_SLOTS[y]]}`;
+        tr.appendChild(th);
+        
+        for (let x = 0; x < beastTypes.length; x++) {
+          const td = document.createElement('td');
+          const cheatCode = `hdhg${x + 1}-${y + 1}`;
+          td.id = `cell-${x + 1}-${y + 1}`;
+          td.innerHTML = `
+            <div style="font-size: 32px; margin-bottom: 6px;">${SOUL_BONE_TYPES[beastTypes[x]].icon}</div>
+            <div class="cheat-code">${cheatCode}</div>
+            <div style="font-size: 12px; color: #666; margin-top: 6px; font-weight: 500;">
+              ${SOUL_BONE_TYPES[beastTypes[x]].name}·${SOUL_BONE_SLOT_NAMES[SOUL_BONE_SLOTS[y]]}
+            </div>
+          `;
+          td.onclick = () => testSingleCode(x + 1, y + 1);
+          tr.appendChild(td);
+        }
+        
+        tbody.appendChild(tr);
+      }
+    }
+
+    // 生成指定魂骨（与应用完全相同的逻辑）
+    async function generateSpecificSoulBone(playerId, beastType, slot) {
+      const attr = SOUL_BONE_ATTRIBUTES[Math.floor(Math.random() * SOUL_BONE_ATTRIBUTES.length)];
+      const boneNames = SOUL_BONE_NAMES[beastType];
+      const name = boneNames ? (boneNames[slot] || `${SOUL_BONE_TYPES[beastType].name}${SOUL_BONE_SLOT_NAMES[slot]}`) : `${SOUL_BONE_TYPES[beastType].name}${SOUL_BONE_SLOT_NAMES[slot]}`;
+      const value = Math.floor((attr.min + Math.random() * (attr.max - attr.min)) * 1);
+      
+      const soulBone = {
+        playerId,
+        beastType,
+        beastName: SOUL_BONE_TYPES[beastType].name,
+        slot,
+        slotName: SOUL_BONE_SLOT_NAMES[slot],
+        name,
+        attributeType: attr.type,
+        attributeName: attr.name,
+        attributeIcon: attr.icon,
+        attributeValue: value,
+        isIdentified: false,
+        isEquipped: false,
+        obtainedAt: Date.now()
+      };
+      
+      const id = await db.soulBones.add(soulBone);
+      return { ...soulBone, id };
+    }
+
+    // 解析作弊码（与应用相同的正则）
+    function parseCheatCode(code) {
+      if (code === 'hdhg') {
+        return { valid: true, type: 'random' };
+      }
+
+      const regex = /^hdhg(\d)-(\d)$/;
+      const match = code.match(regex);
+      if (!match) {
+        return { valid: false, error: '格式错误，应为 hdhgx-y 或 hdhg' };
+      }
+
+      const colNum = parseInt(match[1]);
+      const rowNum = parseInt(match[2]);
+
+      if (colNum < 1 || colNum > 5 || rowNum < 1 || rowNum > 5) {
+        return { valid: false, error: `范围错误：x和y必须在1-5之间` };
+      }
+
+      const beastType = beastTypes[colNum - 1];
+      const slot = SOUL_BONE_SLOTS[rowNum - 1];
+      
+      return {
+        valid: true,
+        type: 'specific',
+        colNum,
+        rowNum,
+        beastType,
+        slot,
+        beastName: SOUL_BONE_TYPES[beastType].name,
+        slotName: SOUL_BONE_SLOT_NAMES[slot]
+      };
+    }
+
+    // 测试单个作弊码
+    async function testSingleCode(colNum, rowNum) {
+      const cheatCode = `hdhg${colNum}-${rowNum}`;
+      const cell = document.getElementById(`cell-${colNum}-${rowNum}`);
+      
+      addLog(`🧪 测试作弊码: ${cheatCode}`, 'info');
+      cell.classList.add('testing');
+      
+      try {
+        const parsed = parseCheatCode(cheatCode);
+        if (!parsed.valid) {
+          addLog(`❌ 作弊码解析失败: ${parsed.error}`, 'error');
+          cell.classList.remove('testing');
+          cell.classList.add('tested-fail');
+          testStats.fail++;
+          updateStats();
+          return false;
+        }
+        
+        addLog(`📋 预期: ${parsed.beastName}·${parsed.slotName} (beastType=${parsed.beastType}, slot=${parsed.slot})`, 'info');
+        
+        // 生成魂骨
+        const bone = await generateSpecificSoulBone(testPlayerId, parsed.beastType, parsed.slot);
+        
+        if (bone) {
+          // 验证生成的魂骨
+          const isCorrectBeast = bone.beastType === parsed.beastType;
+          const isCorrectSlot = bone.slot === parsed.slot;
+          const isCorrectBeastName = bone.beastName === parsed.beastName;
+          const isCorrectSlotName = bone.slotName === parsed.slotName;
+          
+          if (isCorrectBeast && isCorrectSlot && isCorrectBeastName && isCorrectSlotName) {
+            addLog(`✅ 测试通过! ID:${bone.id} | ${bone.beastName}·${bone.slotName} | ${bone.attributeIcon}${bone.attributeName}+${bone.attributeValue}`, 'success');
+            cell.classList.remove('testing');
+            cell.classList.add('tested-success');
+            cell.innerHTML += `<div style="color: #4caf50; font-weight: bold; margin-top: 6px; font-size: 18px;">✅</div>`;
+            testStats.success++;
+            updateStats();
+            return true;
+          } else {
+            let errorMsg = [];
+            if (!isCorrectBeast) errorMsg.push(`beastType不匹配: 预期${parsed.beastType}, 实际${bone.beastType}`);
+            if (!isCorrectSlot) errorMsg.push(`slot不匹配: 预期${parsed.slot}, 实际${bone.slot}`);
+            if (!isCorrectBeastName) errorMsg.push(`beastName不匹配: 预期${parsed.beastName}, 实际${bone.beastName}`);
+            if (!isCorrectSlotName) errorMsg.push(`slotName不匹配: 预期${parsed.slotName}, 实际${bone.slotName}`);
+            
+            addLog(`❌ 测试失败! ID:${bone.id} | ${errorMsg.join(' | ')}`, 'error');
+            cell.classList.remove('testing');
+            cell.classList.add('tested-fail');
+            cell.innerHTML += `<div style="color: #f44336; font-weight: bold; margin-top: 6px; font-size: 18px;">❌</div>`;
+            testStats.fail++;
+            updateStats();
+            return false;
+          }
+        } else {
+          addLog(`❌ 测试失败! 未能生成魂骨`, 'error');
+          cell.classList.remove('testing');
+          cell.classList.add('tested-fail');
+          cell.innerHTML += `<div style="color: #f44336; font-weight: bold; margin-top: 6px; font-size: 18px;">❌</div>`;
+          testStats.fail++;
+          updateStats();
+          return false;
+        }
+      } catch (error) {
+        addLog(`❌ 测试异常: ${error.message}\n${error.stack}`, 'error');
+        cell.classList.remove('testing');
+        cell.classList.add('tested-fail');
+        cell.innerHTML += `<div style="color: #f44336; font-weight: bold; margin-top: 6px; font-size: 18px;">❌</div>`;
+        testStats.fail++;
+        updateStats();
+        return false;
+      }
+    }
+
+    // 更新统计
+    function updateStats() {
+      testStats.total = testStats.success + testStats.fail;
+      document.getElementById('statTotal').textContent = testStats.total;
+      document.getElementById('statSuccess').textContent = testStats.success;
+      document.getElementById('statFail').textContent = testStats.fail;
+      
+      const percent = testStats.total > 0 ? Math.round((testStats.success / testStats.total) * 100) : 0;
+      document.getElementById('statPercent').textContent = percent + '%';
+    }
+
+    // 测试全部25个作弊码
+    async function testAllCodes() {
+      addLog('🚀 开始测试全部25个作弊码...', 'info');
+      document.getElementById('progressContainer').style.display = 'block';
+      
+      const resultBox = document.getElementById('resultBox');
+      resultBox.className = 'result-box info';
+      resultBox.innerHTML = '测试进行中...';
+      
+      for (let col = 1; col <= 5; col++) {
+        for (let row = 1; row <= 5; row++) {
+          const currentTest = (col - 1) * 5 + row;
+          const progress = Math.round((currentTest / 25) * 100);
+          
+          document.getElementById('progressFill').style.width = `${progress}%`;
+          document.getElementById('progressFill').textContent = `${progress}%`;
+          
+          await testSingleCode(col, row);
+          
+          // 小延迟避免界面卡顿
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+      }
+      
+      const successRate = Math.round((testStats.success / testStats.total) * 100);
+      
+      if (testStats.fail === 0) {
+        resultBox.className = 'result-box success';
+        resultBox.innerHTML = `
+          <h3 style="color: #4caf50; margin: 0 0 10px 0;">🎉 全部测试通过!</h3>
+          <p style="margin: 5px 0; font-size: 16px;">成功测试了 <strong>${testStats.success}/25</strong> 个作弊码</p>
+          <p style="margin: 5px 0; font-size: 14px;">所有魂骨都正确生成，作弊码功能运行正常！</p>
+        `;
+        addLog(`🎉 全部测试完成! 成功: ${testStats.success}/25, 成功率: ${successRate}%`, 'success');
+      } else {
+        resultBox.className = 'result-box error';
+        resultBox.innerHTML = `
+          <h3 style="color: #f44336; margin: 0 0 10px 0;">⚠️ 部分测试失败</h3>
+          <p style="margin: 5px 0; font-size: 16px;">成功: <strong>${testStats.success}/25</strong>, 失败: <strong>${testStats.fail}/25</strong></p>
+          <p style="margin: 5px 0; font-size: 14px;">成功率: ${successRate}%</p>
+        `;
+        addLog(`⚠️ 测试完成! 成功: ${testStats.success}/25, 失败: ${testStats.fail}/25, 成功率: ${successRate}%`, 'warning');
+      }
+    }
+
+    // 随机测试5个作弊码
+    async function testRandomCodes() {
+      addLog('🎲 随机测试5个作弊码...', 'info');
+      
+      const resultBox = document.getElementById('resultBox');
+      resultBox.className = 'result-box info';
+      resultBox.innerHTML = '随机测试进行中...';
+      
+      const tests = [];
+      while (tests.length < 5) {
+        const col = Math.floor(Math.random() * 5) + 1;
+        const row = Math.floor(Math.random() * 5) + 1;
+        const key = `${col}-${row}`;
+        if (!tests.includes(key)) {
+          tests.push(key);
+        }
+      }
+      
+      let successCount = 0;
+      for (const test of tests) {
+        const [col, row] = test.split('-').map(Number);
+        const success = await testSingleCode(col, row);
+        if (success) successCount++;
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      
+      resultBox.className = successCount === 5 ? 'result-box success' : 'result-box error';
+      resultBox.innerHTML = `
+        <h3 style="margin: 0 0 10px 0;">${successCount === 5 ? '✅' : '⚠️'} 随机测试完成</h3>
+        <p style="margin: 5px 0;">成功: ${successCount}/5</p>
+      `;
+    }
+
+    // 清除测试结果
+    function clearTestResults() {
+      document.querySelectorAll('.grid-table td').forEach(td => {
+        td.classList.remove('tested-success', 'tested-fail', 'testing');
+        const markDiv = td.querySelector('div[style*="color: #4caf50"], div[style*="color: #f44336"]');
+        if (markDiv) markDiv.remove();
+      });
+      
+      testStats = { total: 0, success: 0, fail: 0 };
+      updateStats();
+      
+      document.getElementById('resultBox').className = 'result-box info';
+      document.getElementById('resultBox').innerHTML = '测试结果已清除，可以重新测试...';
+      document.getElementById('logContainer').innerHTML = '';
+      document.getElementById('progressContainer').style.display = 'none';
+      document.getElementById('progressFill').style.width = '0%';
+      
+      addLog('🧹 测试结果已清除', 'info');
+    }
+
+    // 清空所有魂骨
+    async function clearAllBones() {
+      if (confirm('确定要清空所有测试生成的魂骨吗？')) {
+        const count = await db.soulBones.where('playerId').equals(testPlayerId).count();
+        await db.soulBones.where('playerId').equals(testPlayerId).delete();
+        addLog(`🗑️ 已清空 ${count} 个魂骨`, 'info');
+        
+        document.getElementById('resultBox').className = 'result-box info';
+        document.getElementById('resultBox').innerHTML = `已清空 ${count} 个魂骨，可以重新测试...`;
+        
+        // 清除表格标记
+        clearTestResults();
+      }
+    }
+
+    // 添加日志
+    function addLog(message, type = 'info') {
+      const logContainer = document.getElementById('logContainer');
+      
+      const logEntry = document.createElement('div');
+      logEntry.className = `log-entry ${type}`;
+      logEntry.innerHTML = `[${new Date().toLocaleTimeString()}] ${message.replace(/\n/g, '<br>')}`;
+      
+      logContainer.insertBefore(logEntry, logContainer.firstChild);
+      
+      if (logContainer.children.length > 100) {
+        logContainer.removeChild(logContainer.lastChild);
+      }
+    }
+
+    // 初始化
+    generateGrid();
+    addLog('🔮 测试页面已加载，准备开始测试...', 'info');
+    addLog('📌 提示：点击表格中的任意单元格可单独测试该作弊码', 'info');
+  </script>
+</body>
+</html>

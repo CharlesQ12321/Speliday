@@ -674,11 +674,20 @@ async function generateSoulBone(playerId, dungeonDifficulty) {
   const slot = SOUL_BONE_SLOTS[Math.floor(Math.random() * SOUL_BONE_SLOTS.length)];
   const attr = SOUL_BONE_ATTRIBUTES[Math.floor(Math.random() * SOUL_BONE_ATTRIBUTES.length)];
   
-  // 根据副本难度调整属性值
+  return createSoulBone(playerId, beastType, slot, attr, dungeonDifficulty);
+}
+
+// 生成指定魂兽和部位的魂骨（作弊码专用）
+async function generateSpecificSoulBone(playerId, beastType, slot) {
+  const attr = SOUL_BONE_ATTRIBUTES[Math.floor(Math.random() * SOUL_BONE_ATTRIBUTES.length)];
+  return createSoulBone(playerId, beastType, slot, attr, 1);
+}
+
+// 创建魂骨（内部函数）
+async function createSoulBone(playerId, beastType, slot, attr, dungeonDifficulty) {
   const difficultyMultiplier = 1 + (dungeonDifficulty - 1) * 0.2;
   const value = Math.floor((attr.min + Math.random() * (attr.max - attr.min)) * difficultyMultiplier);
   
-  // 使用具名魂骨名称
   const boneNames = SOUL_BONE_NAMES[beastType];
   const name = boneNames ? (boneNames[slot] || `${SOUL_BONE_TYPES[beastType].name}${SOUL_BONE_SLOT_NAMES[slot]}`) : `${SOUL_BONE_TYPES[beastType].name}${SOUL_BONE_SLOT_NAMES[slot]}`;
   
@@ -7392,7 +7401,7 @@ ${wordList}
 
     const keyword = input.value.trim().toLowerCase();
 
-    // 彩蛋：输入 "hdhg" 获得随机魂骨
+    // 作弊码：输入 "hdhg" 获得随机魂骨
     if (keyword === 'hdhg') {
       const playerId = await this.getCurrentPlayerId();
       if (!playerId) {
@@ -7404,6 +7413,51 @@ ${wordList}
       const newBone = await generateSoulBone(playerId, 1);
       if (newBone) {
         this.showToast('🎉 获得了神秘魂骨！', 'success');
+        // 显示获得魂骨的提示
+        this.showSoulBoneAward(newBone);
+        // 刷新仓库页面
+        const filterBtn = document.querySelector('.soulbone-filter-btn.active');
+        const filter = filterBtn ? filterBtn.dataset.filter : 'all';
+        await this.renderSoulBoneWarehouse(playerId, filter);
+      }
+      return;
+    }
+
+    // 作弊码：输入 "hdhgx-y" 获得指定魂骨
+    // x: 列号(1-5)代表魂兽类型，y: 行号(1-5)代表部位
+    // 列号对应：1=曼陀罗蛇, 2=柔骨兔, 3=邪眸白虎, 4=幽冥灵猫, 5=七宝琉璃
+    // 行号对应：1=头骨, 2=躯干骨, 3=左臂骨, 4=右腿骨, 5=外附魂骨
+    const cheatRegex = /^hdhg(\d)-(\d)$/;
+    const cheatMatch = keyword.match(cheatRegex);
+    if (cheatMatch) {
+      const playerId = await this.getCurrentPlayerId();
+      if (!playerId) {
+        this.showToast('请先选择角色', 'warning');
+        return;
+      }
+
+      const colNum = parseInt(cheatMatch[1]); // 列号（魂兽类型）
+      const rowNum = parseInt(cheatMatch[2]); // 行号（部位）
+
+      // 验证输入范围
+      if (colNum < 1 || colNum > 5 || rowNum < 1 || rowNum > 5) {
+        this.showToast('作弊码格式错误：hdhgx-y，x和y的范围都是1-5', 'error');
+        return;
+      }
+
+      // 列号映射到魂兽类型
+      const beastTypes = ['mantuo', 'rougu', 'xiehou', 'youming', 'qibao'];
+      const beastType = beastTypes[colNum - 1];
+      const beastName = SOUL_BONE_TYPES[beastType].name;
+
+      // 行号映射到部位
+      const slot = SOUL_BONE_SLOTS[rowNum - 1];
+      const slotName = SOUL_BONE_SLOT_NAMES[slot];
+
+      // 生成指定魂骨
+      const newBone = await generateSpecificSoulBone(playerId, beastType, slot);
+      if (newBone) {
+        this.showToast(`🎉 获得了 ${beastName}·${slotName}！`, 'success');
         // 显示获得魂骨的提示
         this.showSoulBoneAward(newBone);
         // 刷新仓库页面

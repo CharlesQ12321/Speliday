@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>魂骨作弊码验证测试</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; padding: 20px; background: #f0f2f5; }
+    .card { background: white; border-radius: 8px; padding: 20px; margin: 16px 0; }
+    h1 { color: #333; }
+    .test-btn { padding: 10px 20px; margin: 5px; border: none; border-radius: 4px; cursor: pointer; color: white; font-size: 14px; }
+    .btn-random { background: #9b59b6; }
+    .btn-specific { background: #2ecc71; }
+    #result { padding: 15px; margin: 10px 0; background: #e8f5e9; border-radius: 4px; min-height: 40px; }
+    .cheat-code { font-family: monospace; background: #f5f5f5; padding: 2px 6px; border-radius: 3px; }
+    table { border-collapse: collapse; margin: 10px 0; }
+    th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: center; }
+    th { background: #f0f0f0; }
+    .success { color: #27ae60; font-weight: bold; }
+    .error { color: #e74c3c; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>🔮 魂骨作弊码验证测试</h1>
+  
+  <div class="card">
+    <h2>作弊码格式</h2>
+    <p><span class="cheat-code">hdhgx-y</span></p>
+    <ul>
+      <li><strong>x</strong>：列号（1-5）代表魂兽类型</li>
+      <li><strong>y</strong>：行号（1-5）代表部位</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>5×5 魂骨表格对照</h2>
+    <table id="gridTable">
+      <thead>
+        <tr>
+          <th>部位\魂兽</th>
+          <th>1🐍曼陀罗蛇</th>
+          <th>2🐰柔骨兔</th>
+          <th>3🐯邪眸白虎</th>
+          <th>4🐱幽冥灵猫</th>
+          <th>5💎七宝琉璃</th>
+        </tr>
+      </thead>
+      <tbody id="gridBody">
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>功能测试</h2>
+    <div>
+      <button class="test-btn btn-random" onclick="testCheatCode('hdhg')">hdhg（随机）</button>
+      <button class="test-btn btn-specific" onclick="testCheatCode('hdhg3-2')">hdhg3-2</button>
+      <button class="test-btn btn-specific" onclick="testCheatCode('hdhg1-1')">hdhg1-1</button>
+      <button class="test-btn btn-specific" onclick="testCheatCode('hdhg5-5')">hdhg5-5</button>
+      <button class="test-btn btn-specific" onclick="testCheatCode('hdhg0-1')">hdhg0-1（错误）</button>
+      <button class="test-btn btn-specific" onclick="testCheatCode('hdhg6-3')">hdhg6-3（错误）</button>
+    </div>
+    <div id="result">点击按钮测试...</div>
+  </div>
+
+  <script>
+    const SOUL_BONE_TYPES = {
+      mantuo: { name: '曼陀罗蛇', color: '#8B008B', icon: '🐍' },
+      rougu: { name: '柔骨兔', color: '#FF69B4', icon: '🐰' },
+      xiehou: { name: '邪眸白虎', color: '#FF4500', icon: '🐯' },
+      youming: { name: '幽冥灵猫', color: '#4B0082', icon: '🐱' },
+      qibao: { name: '七宝琉璃', color: '#FFD700', icon: '💎' }
+    };
+
+    const SOUL_BONE_SLOTS = ['head', 'body', 'left_arm', 'right_leg', 'external'];
+    const SOUL_BONE_SLOT_NAMES = { head: '头骨', body: '躯干骨', left_arm: '左臂骨', right_leg: '右腿骨', external: '外附魂骨' };
+    const beastTypes = ['mantuo', 'rougu', 'xiehou', 'youming', 'qibao'];
+    const beastIcons = ['🐍', '', '🐯', '🐱', '💎'];
+
+    // 生成5×5表格
+    function generateGrid() {
+      const tbody = document.getElementById('gridBody');
+      const slots = SOUL_BONE_SLOTS;
+      
+      for (let y = 0; y < slots.length; y++) {
+        const tr = document.createElement('tr');
+        
+        // 行标题（部位）
+        const th = document.createElement('th');
+        th.textContent = `${y + 1}${SOUL_BONE_SLOT_NAMES[slots[y]]}`;
+        tr.appendChild(th);
+        
+        // 列（魂兽）
+        for (let x = 0; x < beastTypes.length; x++) {
+          const td = document.createElement('td');
+          const cheatCode = `hdhg${x + 1}-${y + 1}`;
+          const beastName = SOUL_BONE_TYPES[beastTypes[x]].name;
+          const slotName = SOUL_BONE_SLOT_NAMES[slots[y]];
+          td.innerHTML = `<span style="font-size: 20px;">${beastIcons[x]}</span><br><code style="font-size: 11px;">${cheatCode}</code><br><span style="font-size: 10px; color: #666;">${beastName}·${slotName}</span>`;
+          td.style.cursor = 'pointer';
+          td.onclick = () => testCheatCode(cheatCode);
+          tr.appendChild(td);
+        }
+        
+        tbody.appendChild(tr);
+      }
+    }
+
+    function parseCheatCode(code) {
+      // 随机魂骨
+      if (code === 'hdhg') {
+        return { valid: true, type: 'random', display: '随机魂骨' };
+      }
+
+      // 指定魂骨
+      const regex = /^hdhg(\d)-(\d)$/;
+      const match = code.match(regex);
+      if (!match) {
+        return { valid: false, error: '格式错误，应为 hdhgx-y 或 hdhg' };
+      }
+
+      const colNum = parseInt(match[1]);
+      const rowNum = parseInt(match[2]);
+
+      if (colNum < 1 || colNum > 5 || rowNum < 1 || rowNum > 5) {
+        return { valid: false, error: `范围错误：x和y必须在1-5之间，当前为 ${colNum}-${rowNum}` };
+      }
+
+      const beastType = beastTypes[colNum - 1];
+      const slot = SOUL_BONE_SLOTS[rowNum - 1];
+      const beastName = SOUL_BONE_TYPES[beastType].name;
+      const slotName = SOUL_BONE_SLOT_NAMES[slot];
+
+      return {
+        valid: true,
+        type: 'specific',
+        colNum,
+        rowNum,
+        beastType,
+        slot,
+        beastName,
+        slotName,
+        display: `${beastIcons[colNum - 1]} ${beastName}·${slotName}`
+      };
+    }
+
+    function testCheatCode(code) {
+      const result = document.getElementById('result');
+      const parsed = parseCheatCode(code);
+
+      if (parsed.valid) {
+        if (parsed.type === 'random') {
+          result.innerHTML = `<span class="success">✅ 测试通过</span><br>输入：<code>${code}</code><br>结果：随机获得一个魂骨（随机选择5种魂兽之一和5个部位之一）`;
+        } else {
+          result.innerHTML = `<span class="success">✅ 测试通过</span><br>输入：<code>${code}</code><br>列号：${parsed.colNum} → ${parsed.beastName}<br>行号：${parsed.rowNum} → ${parsed.slotName}<br>结果：获得 <strong>${parsed.display}</strong>`;
+        }
+      } else {
+        result.innerHTML = `<span class="error">❌ 测试失败</span><br>输入：<code>${code}</code><br>错误：${parsed.error}`;
+      }
+    }
+
+    // 初始化
+    generateGrid();
+  </script>
+</body>
+</html>
