@@ -820,14 +820,14 @@
     }
 
     .character-img {
-      height: 80px;
+      height: 160px;
       width: auto;
       object-fit: contain;
     }
 
     .character-left {
       margin-right: auto;
-      transform: scale(0.5) translateX(-110px) translateY(30px);
+      transform: scale(0.5) translateX(-110px) translateY(90px);
     }
 
     .character-right {
@@ -846,18 +846,18 @@
 
     .bullet {
       position: absolute;
-      width: 16px;
-      height: 16px;
-      background: radial-gradient(circle at 30% 30%, #90EE90, #228B22);
-      border-radius: 50%;
+      width: 24px;
+      height: 24px;
       left: 0;
-      top: 50%;
-      margin-top: -8px;
+      top: calc(50% + 50px);
+      margin-top: -12px;
       transform: scale(0);
       opacity: 0;
       z-index: 10;
-      box-shadow: 0 0 8px rgba(34, 139, 34, 0.6);
       will-change: transform, opacity, left;
+      background: radial-gradient(circle at 40% 40%, #FFD700, #FF8C00, #FF4500);
+      border-radius: 50%;
+      box-shadow: 0 0 12px rgba(255, 140, 0, 0.8), 0 0 24px rgba(255, 69, 0, 0.4);
     }
 
     .bullet.flying {
@@ -866,12 +866,12 @@
 
     @keyframes bulletFlyToZombie {
       0% {
-        left: 0;
+        left: var(--bullet-start, 0);
         transform: scale(0);
         opacity: 0;
       }
       15% {
-        left: 0;
+        left: var(--bullet-start, 0);
         transform: scale(1);
         opacity: 1;
       }
@@ -892,7 +892,7 @@
       right: 0;
       top: 0;
       bottom: 0;
-      width: 320px;
+      width: 245px;
       pointer-events: none;
     }
 
@@ -910,7 +910,7 @@
       position: absolute;
       right: 0;
       top: 50%;
-      transform: translateY(-50%);
+      transform: translateY(calc(-50% + 47px));
       transition: right 0.5s ease-out;
     }
 
@@ -939,8 +939,8 @@
     }
 
     @keyframes zombieAttack {
-      0%, 100% { transform: translateY(-50%) scale(1); }
-      50% { transform: translateY(-50%) scale(1.2); }
+      0%, 100% { transform: translateY(calc(-50% + 42px)) scale(1); }
+      50% { transform: translateY(calc(-50% + 42px)) scale(1.2); }
     }
 
     .practice-progress {
@@ -1579,6 +1579,61 @@
       0% { opacity: 1; }
       100% { opacity: 0; }
     }
+
+    @keyframes identifyPulse {
+      0%, 100% { transform: scale(1); opacity: 0.6; }
+      50% { transform: scale(1.2); opacity: 1; }
+    }
+
+    @keyframes identifyReveal {
+      0% { transform: scale(0.5) rotateY(180deg); opacity: 0; }
+      100% { transform: scale(1) rotateY(0deg); opacity: 1; }
+    }
+
+    .soulbone-gallery-cell {
+      padding: 8px;
+      border: 1px solid var(--border);
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .soulbone-gallery-cell:hover {
+      background: rgba(155, 89, 182, 0.1);
+    }
+    .soulbone-gallery-cell.owned {
+      background: rgba(155, 89, 182, 0.15);
+      font-weight: 600;
+    }
+    .soulbone-gallery-cell.not-owned {
+      background: rgba(0, 0, 0, 0.05);
+      color: var(--text-muted);
+      cursor: default;
+    }
+
+    .soulbone-warehouse-item {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      transition: all 0.2s;
+    }
+    .soulbone-warehouse-item:hover {
+      border-color: #9b59b6;
+      box-shadow: 0 2px 8px rgba(155, 89, 182, 0.2);
+    }
+    .soulbone-warehouse-item.equipped {
+      border-color: #FFD700;
+      background: rgba(255, 215, 0, 0.1);
+    }
+
+    .soulbone-filter-btn.active {
+      background: #9b59b6;
+      color: white;
+      border-color: #9b59b6;
+    }
   </style>
 </head>
 <body>
@@ -1762,7 +1817,7 @@
             </div>
             <!-- 豌豆和僵尸图片 -->
             <div class="practice-characters">
-              <img src="豌豆.gif" alt="豌豆" class="character-img character-left">
+              <img src="角色行走动作.gif" alt="角色" class="character-img character-left" id="character-image">
               <div class="bullets-container" id="bullets-container">
                 <div class="bullet" id="bullet-0"></div>
                 <div class="bullet" id="bullet-1"></div>
@@ -1772,7 +1827,7 @@
               </div>
               <div class="zombie-position-track">
                 <div class="zombie-indicator" id="zombie-indicator">
-                  <img src="僵尸行走动图.gif" alt="僵尸" class="zombie-img">
+                  <img src="蜘蛛怪物行走.gif" alt="蜘蛛怪物" class="zombie-img" id="zombie-image">
                   <div class="zombie-progress" id="zombie-progress">0%</div>
                 </div>
               </div>
@@ -2081,6 +2136,20 @@
           </div>
         </div>
         
+        <!-- 魂骨仓库入口（阶段四：任务 5.4） -->
+        <div style="margin-top: 20px; margin-bottom: 16px;">
+          <div class="section-title">
+            <i class="fa fa-diamond" style="color: #9b59b6;"></i>
+            <span>魂骨仓库</span>
+            <button class="btn btn-primary" style="padding: 4px 12px; font-size: 12px; margin-left: auto;" onclick="app.openSoulBoneWarehouse()">
+              查看仓库
+            </button>
+          </div>
+          <div id="soul-bone-quick-view" style="font-size: 12px; color: var(--text-muted); text-align: center; padding: 8px;">
+            加载中...
+          </div>
+        </div>
+        
         <!-- 删除角色按钮 -->
         <div style="margin-top: 20px; margin-bottom: 100px;">
           <button class="btn btn-danger btn-block" onclick="app.deleteCurrentProfile()" style="justify-content: center; padding: 14px;">
@@ -2093,6 +2162,78 @@
         
         <!-- 底部占位区域 -->
         <div style="height: 100px;"></div>
+      </div>
+
+      <!-- 魂骨图鉴页面（阶段五：任务5.1） -->
+      <div id="page-soulbone-gallery" class="page">
+        <div class="section-title">
+          <i class="fa fa-diamond" style="color: #9b59b6;"></i>
+          <span>魂骨图鉴</span>
+          <span id="soulbone-gallery-progress" style="font-size: 12px; color: var(--text-muted); margin-left: auto;"></span>
+        </div>
+
+        <!-- 5×5图鉴表格 -->
+        <div class="card" style="padding: 16px; overflow-x: auto;">
+          <table id="soulbone-gallery-table" style="width: 100%; border-collapse: collapse; font-size: 12px;">
+            <thead>
+              <tr>
+                <th style="padding: 8px; border: 1px solid var(--border);">部位</th>
+                <th style="padding: 8px; border: 1px solid var(--border);">🐍 曼陀罗蛇</th>
+                <th style="padding: 8px; border: 1px solid var(--border);">🐰 柔骨兔</th>
+                <th style="padding: 8px; border: 1px solid var(--border);">🐯 邪眸白虎</th>
+                <th style="padding: 8px; border: 1px solid var(--border);">🐱 幽冥灵猫</th>
+                <th style="padding: 8px; border: 1px solid var(--border);">💎 七宝琉璃</th>
+              </tr>
+            </thead>
+            <tbody id="soulbone-gallery-tbody">
+              <!-- 动态生成 -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 套装收集进度 -->
+        <div class="card">
+          <div class="card-title">套装收集进度</div>
+          <div id="soulbone-set-progress-list" style="display: flex; flex-direction: column; gap: 12px;">
+            <!-- 动态生成 -->
+          </div>
+        </div>
+      </div>
+
+      <!-- 魂骨仓库页面（阶段五：任务5.4） -->
+      <div id="page-soulbone-warehouse" class="page">
+        <div class="section-title">
+          <i class="fa fa-archive" style="color: #9b59b6;"></i>
+          <span>魂骨仓库</span>
+          <span id="soulbone-warehouse-count" style="font-size: 12px; color: var(--text-muted); margin-left: auto;"></span>
+        </div>
+
+        <!-- 筛选功能 -->
+        <div class="card" style="padding: 12px;">
+          <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            <button class="btn btn-sm btn-primary soulbone-filter-btn active" data-filter="all">全部</button>
+            <button class="btn btn-sm btn-outline soulbone-filter-btn" data-filter="mantuo">🐍 曼陀罗蛇</button>
+            <button class="btn btn-sm btn-outline soulbone-filter-btn" data-filter="rougu">🐰 柔骨兔</button>
+            <button class="btn btn-sm btn-outline soulbone-filter-btn" data-filter="xiehou">🐯 邪眸白虎</button>
+            <button class="btn btn-sm btn-outline soulbone-filter-btn" data-filter="youming">🐱 幽冥灵猫</button>
+            <button class="btn btn-sm btn-outline soulbone-filter-btn" data-filter="qibao">💎 七宝琉璃</button>
+            <button class="btn btn-sm btn-outline soulbone-filter-btn" data-filter="identified">已鉴定</button>
+            <button class="btn btn-sm btn-outline soulbone-filter-btn" data-filter="unidentified">未鉴定</button>
+            <button class="btn btn-sm btn-outline soulbone-filter-btn" data-filter="equipped">已装备</button>
+          </div>
+        </div>
+
+        <!-- 魂骨列表 -->
+        <div id="soulbone-warehouse-list" style="display: flex; flex-direction: column; gap: 10px;">
+          <!-- 动态生成 -->
+        </div>
+
+        <!-- 返回按钮 -->
+        <div style="margin-top: 20px;">
+          <button class="btn btn-outline btn-block" onclick="app.navigate('profile')">
+            <i class="fa fa-arrow-left"></i> 返回角色页面
+          </button>
+        </div>
       </div>
 
       <!-- Settings Page -->
@@ -2253,6 +2394,47 @@
         </div>
       </div>
     </main>
+
+    <!-- 魂骨详情弹窗（阶段五：任务5.2） -->
+    <div class="modal-overlay" id="soulbone-detail-modal">
+      <div class="modal" style="max-width: 420px;">
+        <div class="modal-header">
+          <div class="modal-title" id="soulbone-detail-title">魂骨详情</div>
+          <button class="modal-close" onclick="app.closeSoulBoneDetailModal()">×</button>
+        </div>
+        <div class="modal-body">
+          <div id="soulbone-detail-list" style="display: flex; flex-direction: column; gap: 12px;">
+            <!-- 动态生成魂骨实例列表 -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 魂骨鉴定动画弹窗（阶段四：任务4.3） -->
+    <div class="modal-overlay" id="soulbone-identify-modal" style="background: rgba(0,0,0,0.9);">
+      <div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; position: relative;">
+        <div id="identify-animation-container" style="text-align: center;">
+          <div id="identify-glow" style="width: 150px; height: 150px; border-radius: 50%; background: radial-gradient(circle, rgba(155,89,182,0.8), transparent); margin: 0 auto 30px; animation: identifyPulse 1.5s ease-in-out infinite;"></div>
+          <div id="identify-text" style="font-size: 24px; color: #fff; font-weight: 700; margin-bottom: 10px;">鉴定中...</div>
+          <div id="identify-result" style="display: none; font-size: 18px; color: #FFD700; font-weight: 600;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 获得魂骨提示弹窗 -->
+    <div class="modal-overlay" id="soulbone-award-modal">
+      <div class="modal" style="max-width: 360px;">
+        <div class="modal-header">
+          <div class="modal-title">🎉 获得魂骨！</div>
+        </div>
+        <div class="modal-body" style="text-align: center;">
+          <div id="soulbone-award-icon" style="font-size: 48px; margin-bottom: 16px;"></div>
+          <div id="soulbone-award-name" style="font-size: 20px; font-weight: 700; margin-bottom: 8px;"></div>
+          <div id="soulbone-award-desc" style="font-size: 14px; color: var(--text-muted); margin-bottom: 20px;"></div>
+          <button class="btn btn-primary btn-block" onclick="app.closeSoulBoneAwardModal()">确认</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Bottom Navigation -->
     <nav class="bottom-nav">
@@ -2420,10 +2602,10 @@
         </div>
         <div class="modal-body" style="text-align: center;">
           <div style="font-size: 72px; margin: 20px 0;">
-            🧟‍♂️
+            ️
           </div>
           <div style="font-size: 18px; color: var(--error); margin-bottom: 12px; font-weight: 600;">
-            僵尸吃了你的脑子！
+            蜘蛛怪物抓住了你！
           </div>
           <div style="font-size: 14px; color: var(--text-secondary); margin-bottom: 20px;">
             练习失败，下次再接再厉！

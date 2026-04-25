@@ -596,11 +596,35 @@ async function completeDungeon(playerId, dungeonId, success, practiceData) {
 // ===== 魂骨系统（阶段四预留接口） =====
 // 魂骨类型配置
 const SOUL_BONE_TYPES = {
-  mantuo:   { name: '曼陀罗蛇', color: '#8B008B', icon: '🐍' },
-  rougu:    { name: '柔骨兔',   color: '#FF69B4', icon: '🐰' },
-  xiehou:   { name: '邪眸白虎', color: '#FF4500', icon: '🐯' },
-  youming:  { name: '幽冥灵猫', color: '#4B0082', icon: '🐱' },
-  qibao:    { name: '七宝琉璃', color: '#FFD700', icon: '💎' }
+  mantuo:   { name: '曼陀罗蛇', color: '#8B008B', icon: '🐍', setSkill: '积分翻倍', setSkillDesc: '练习获得积分翻倍' },
+  rougu:    { name: '柔骨兔',   color: '#FF69B4', icon: '🐰', setSkill: '失败重生', setSkillDesc: '拼写错误可重生一次' },
+  xiehou:   { name: '邪眸白虎', color: '#FF4500', icon: '🐯', setSkill: '连击不断', setSkillDesc: '连击不会因一次失误中断' },
+  youming:  { name: '幽冥灵猫', color: '#4B0082', icon: '🐱', setSkill: '答错不惩罚', setSkillDesc: '答错不会扣分' },
+  qibao:    { name: '七宝琉璃', color: '#FFD700', icon: '💎', setSkill: '失败获积分', setSkillDesc: '挑战失败也能获得50%积分' }
+};
+
+// 魂骨名称配置（阶段四：任务 4.2）
+const SOUL_BONE_NAMES = {
+  mantuo: {
+    head: '毒瞳蛇皇颅', body: '龙鳞蛇甲', left_arm: '噬毒蟒臂',
+    right_arm: '裂风蟒臂', left_leg: '疾风蛇行靴', right_leg: '蛇影追风靴', external: '蛇魔蛛矛'
+  },
+  rougu: {
+    head: '月魄兔灵冠', body: '玉骨冰肌衣', left_arm: '粉玉柔臂',
+    right_arm: '凝霜兔臂', left_leg: '踏月追云靴', right_leg: '冰晶兔腿', external: '冰晶兔绒翼'
+  },
+  xiehou: {
+    head: '霸虎啸天冠', body: '金刚虎躯铠', left_arm: '裂风虎臂',
+    right_arm: '狂虎碎岩臂', left_leg: '狂虎奔雷靴', right_leg: '白虎踏雪靴', external: '白虎金刚翼'
+  },
+  youming: {
+    head: '影魅幽魂冠', body: '夜行影魅袍', left_arm: '瞬影猫臂',
+    right_arm: '幽冥猎手臂', left_leg: '幽灵鬼影迷', right_leg: '暗夜潜行靴', external: '幽冥影刃'
+  },
+  qibao: {
+    head: '琉璃幻心冕', body: '七彩云烟铠', left_arm: '玲珑水晶臂',
+    right_arm: '七宝琉璃臂', left_leg: '流光飞羽靴', right_leg: '彩云追月靴', external: '七宝玲珑塔'
+  }
 };
 
 const SOUL_BONE_SLOTS = ['head', 'body', 'left_arm', 'right_arm', 'left_leg', 'right_leg', 'external'];
@@ -617,7 +641,7 @@ const SOUL_BONE_ATTRIBUTES = [
   { type: 'slow', name: '减速', icon: '❄️', min: 1, max: 5 }
 ];
 
-// 生成随机魂骨
+// 生成随机魂骨（阶段四：任务 4.2）
 async function generateSoulBone(playerId, dungeonDifficulty) {
   const beastTypes = Object.keys(SOUL_BONE_TYPES);
   const beastType = beastTypes[Math.floor(Math.random() * beastTypes.length)];
@@ -628,13 +652,16 @@ async function generateSoulBone(playerId, dungeonDifficulty) {
   const difficultyMultiplier = 1 + (dungeonDifficulty - 1) * 0.2;
   const value = Math.floor((attr.min + Math.random() * (attr.max - attr.min)) * difficultyMultiplier);
   
-  const beastInfo = SOUL_BONE_TYPES[beastType];
-  const name = `${beastInfo.name}${SOUL_BONE_SLOT_NAMES[slot]}`;
+  // 使用具名魂骨名称
+  const boneNames = SOUL_BONE_NAMES[beastType];
+  const name = boneNames ? (boneNames[slot] || `${SOUL_BONE_TYPES[beastType].name}${SOUL_BONE_SLOT_NAMES[slot]}`) : `${SOUL_BONE_TYPES[beastType].name}${SOUL_BONE_SLOT_NAMES[slot]}`;
   
   const soulBone = {
     playerId,
     beastType,
+    beastName: SOUL_BONE_TYPES[beastType].name,
     slot,
+    slotName: SOUL_BONE_SLOT_NAMES[slot],
     name,
     attributeType: attr.type,
     attributeName: attr.name,
@@ -649,7 +676,7 @@ async function generateSoulBone(playerId, dungeonDifficulty) {
   return soulBone;
 }
 
-// 鉴定魂骨
+// 鉴定魂骨（阶段四：任务 4.3）
 async function identifySoulBone(soulBoneId) {
   const bone = await db.soulBones.get(soulBoneId);
   if (!bone || bone.isIdentified) return null;
@@ -658,7 +685,7 @@ async function identifySoulBone(soulBoneId) {
   return { ...bone, isIdentified: true };
 }
 
-// 装备魂骨
+// 装备魂骨（阶段四：任务 4.4）
 async function equipSoulBone(soulBoneId) {
   const bone = await db.soulBones.get(soulBoneId);
   if (!bone || !bone.isIdentified) return { success: false, reason: '魂骨未鉴定' };
@@ -688,20 +715,56 @@ async function getPlayerSoulBones(playerId) {
   return await db.soulBones.where('playerId').equals(playerId).toArray();
 }
 
-// 计算套装效果
+// 计算套装效果（阶段四：任务 4.5）
 function getSetBonus(equippedBones) {
-  const slotCounts = {};
+  const setCounts = {};
   equippedBones.forEach(bone => {
-    slotCounts[bone.slot] = (slotCounts[bone.slot] || 0) + 1;
+    if (bone.isEquipped) {
+      setCounts[bone.beastType] = (setCounts[bone.beastType] || 0) + 1;
+    }
   });
   
   const bonuses = [];
-  // 5件套装
-  if (equippedBones.length >= 5) bonuses.push({ name: '五件套装', bonus: '全属性+10%', icon: '⭐' });
-  // 同部位多件（外附魂骨特殊）
-  if (slotCounts['external']) bonuses.push({ name: '外附魂骨', bonus: '额外技能解锁', icon: '🔮' });
+  
+  // 检查每种魂兽是否集齐5件激活套装
+  Object.keys(setCounts).forEach(beastType => {
+    if (setCounts[beastType] >= 5) {
+      const beast = SOUL_BONE_TYPES[beastType];
+      if (beast) {
+        bonuses.push({
+          beastType: beastType,
+          beastName: beast.name,
+          skill: beast.setSkill,
+          skillDesc: beast.setSkillDesc,
+          icon: beast.icon
+        });
+      }
+    }
+  });
+  
+  // 全套装（5种各1件）额外加成
+  if (Object.keys(setCounts).length >= 5) {
+    bonuses.push({
+      beastType: 'full_set',
+      beastName: '全套魂骨',
+      skill: '神级套装',
+      skillDesc: '所有技能效果提升50%',
+      icon: '🌟'
+    });
+  }
   
   return bonuses;
+}
+
+// 获取激活的套装技能列表
+function getActiveSetSkills(equippedBones) {
+  return getSetBonus(equippedBones).map(b => b.skill);
+}
+
+// 检查特定套装技能是否激活
+function isSetSkillActive(equippedBones, skillName) {
+  const skills = getActiveSetSkills(equippedBones);
+  return skills.includes(skillName);
 }
 
 // 重置每日副本次数（在登录时检查）
@@ -1477,10 +1540,14 @@ const app = {
     state.currentPage = page;
     
     // Update nav items
-    document.querySelectorAll('.nav-item').forEach(item => {
+    const navItems = document.querySelectorAll('.nav-item');
+    navItems.forEach(item => {
       item.classList.remove('active');
+      const onclick = item.getAttribute('onclick');
+      if (onclick && onclick.includes(`'${page}'`)) {
+        item.classList.add('active');
+      }
     });
-    event.currentTarget.classList.add('active');
     
     // Update pages
     document.querySelectorAll('.page').forEach(p => {
@@ -3388,28 +3455,93 @@ ${text}`;
     this.startPractice('random');
   },
 
+  // 播放角色攻击动画
+  playAttackAnimation(callback, fireDelay = 0) {
+    const characterImg = document.getElementById('character-image');
+    if (!characterImg) {
+      if (callback) callback();
+      return;
+    }
+
+    const walkSrc = '角色行走动作.gif';
+    const attackSrc = '角色攻击动作.gif';
+
+    if (decodeURI(characterImg.src).includes('角色攻击动作.gif')) return;
+
+    characterImg.src = attackSrc;
+
+    // 在指定延迟后发射子弹
+    if (fireDelay > 0) {
+      setTimeout(() => {
+        if (callback) callback();
+      }, fireDelay);
+    }
+
+    // 4 秒后恢复行走动画
+    setTimeout(() => {
+      characterImg.src = walkSrc;
+      if (fireDelay === 0 && callback) callback();
+    }, 4000);
+  },
+
+  // 播放蜘蛛怪物攻击动画
+  playSpiderAttackAnimation(callback) {
+    const zombieImg = document.getElementById('zombie-image');
+    if (!zombieImg) {
+      if (callback) callback();
+      return;
+    }
+
+    const walkSrc = '蜘蛛怪物行走.gif';
+    const attackSrc = '蜘蛛怪物攻击.gif';
+
+    if (decodeURI(zombieImg.src).includes('蜘蛛怪物攻击.gif')) return;
+
+    zombieImg.src = attackSrc;
+
+    // 边播放攻击动图边向前移动 10%
+    this.moveZombieForward();
+
+    setTimeout(() => {
+      zombieImg.src = walkSrc;
+      if (callback) callback();
+    }, 2000);
+  },
+
   // 触发子弹动画 - 根据连击数发射多个子弹
   fireBullet(count, onBulletHit) {
     const charactersContainer = document.querySelector('.practice-characters');
     if (!charactersContainer) return;
 
-    const containerWidth = charactersContainer.offsetWidth;
-    const trackWidth = 320; // zombie-position-track 宽度
-    const zombieWidth = 80;
+    const characterImg = document.getElementById('character-image');
+    const zombieIndicator = document.getElementById('zombie-indicator');
+
+    // 获取角色图片的位置信息（相对于 practice-characters 容器）
+    const charRect = characterImg ? characterImg.getBoundingClientRect() : null;
+    const containerRect = charactersContainer.getBoundingClientRect();
+
+    // 获取蜘蛛怪物的位置信息（相对于 practice-characters 容器）
+    const zombieRect = zombieIndicator ? zombieIndicator.getBoundingClientRect() : null;
 
     // 发射多个子弹，每个子弹有延迟
     for (let i = 0; i < count; i++) {
       setTimeout(() => {
         const bullet = document.getElementById(`bullet-${i}`);
         if (bullet) {
-          // 每次发射时重新计算僵尸当前位置（因为僵尸可能已被之前的子弹击退）
-          const maxMove = trackWidth - zombieWidth;
-          const zombieCurrentRight = (state.zombiePosition / 100) * maxMove;
-          const bulletTargetLeft = containerWidth - zombieCurrentRight - zombieWidth / 2;
-          const bulletPercent = (bulletTargetLeft / containerWidth) * 100;
+          // 计算起点：角色图片中心位置（相对于容器）
+          const startX = charRect ? (charRect.left - containerRect.left + charRect.width / 2) : 0;
+          const startPercent = (startX / containerRect.width) * 100;
+
+          // 计算终点：蜘蛛怪物中心位置（相对于容器）
+          const endX = zombieRect ? (zombieRect.left - containerRect.left + zombieRect.width / 2) : containerRect.width;
+          const endPercent = (endX / containerRect.width) * 100;
 
           // 设置自定义属性用于动画
-          bullet.style.setProperty('--bullet-target', `${bulletPercent}%`);
+          bullet.style.setProperty('--bullet-start', `${startPercent}%`);
+          bullet.style.setProperty('--bullet-target', `${endPercent}%`);
+
+          // 设置初始位置为起点
+          bullet.style.left = `${startPercent}%`;
 
           bullet.classList.remove('flying');
           void bullet.offsetWidth;
@@ -3567,15 +3699,18 @@ ${text}`;
         state.correctWordsInPractice++;
       }
 
-      // 触发子弹动画（连击数=子弹数，最大5个）并击退僵尸（1个子弹=2%，5个子弹=10%）
-      const bulletCount = Math.min(state.consecutiveCorrectCount, 5);
-      const pushPerBullet = 2; // 每个子弹击退2%
-      let hitCount = 0;
-      this.fireBullet(bulletCount, (bulletIndex) => {
-        // 每个子弹击中时击退僵尸
-        hitCount++;
-        this.pushZombieBack(pushPerBullet);
-      });
+      // 播放攻击动画，2 秒后发射子弹
+      this.playAttackAnimation(() => {
+        // 触发子弹动画（连击数=子弹数，最大 5 个）并击退僵尸（1 个子弹=2%，5 个子弹=10%）
+        const bulletCount = Math.min(state.consecutiveCorrectCount, 5);
+        const pushPerBullet = 2; // 每个子弹击退 2%
+        let hitCount = 0;
+        this.fireBullet(bulletCount, (bulletIndex) => {
+          // 每个子弹击中时击退僵尸
+          hitCount++;
+          this.pushZombieBack(pushPerBullet);
+        });
+      }, 2000);
 
       // 更新积分显示并添加动画
       this.updateScoreDisplayWithAnimation();
@@ -3603,11 +3738,23 @@ ${text}`;
         this.showNextWord();
       }, 2000);
     } else {
-      // 拼写错误，重置连续正确计数
-      state.consecutiveCorrectCount = 0;
+      // 拼写错误
+      const playerId = await this.getCurrentPlayerId();
+      
+      // 邪眸白虎套装：连击不断
+      await this.handleComboBreak(playerId);
+      
+      // 幽冥灵猫套装：答错不惩罚
+      const noPenalty = await this.checkWrongAnswerPenalty(playerId);
 
-      // 僵尸前进10%
-      this.moveZombieForward();
+      // 播放蜘蛛攻击动画（仅在未触发答错不惩罚时）
+      if (!noPenalty) {
+        this.playSpiderAttackAnimation(() => {
+          // 动画完成后无需额外移动
+        });
+      } else {
+        this.showToast('🐱 幽冥灵猫套装：僵尸未前进！', 'info');
+      }
 
       // Increment error count - 先从数据库获取最新值，确保正确累加
       const currentWord = await db.words.get(word.id);
@@ -3899,9 +4046,17 @@ ${text}`;
       completedAt: now
     });
 
-    // 斗罗大陆魂力系统：将积分转换为魂力（addSpiritPower 会同步更新 playerProfiles）
+    // 斗罗大陆魂力系统：将积分转换为魂力（应用套装技能后再转换）
     const oldProfile = await getPlayerProfile(playerName);
-    const spiritResult = await addSpiritPower(playerName, state.practiceScore, 'practice');
+    const playerProfile = await db.playerProfiles.where('playerName').equals(playerName).first();
+    
+    // 应用套装技能到积分（曼陀罗蛇套装：积分翻倍）
+    let finalScore = state.practiceScore;
+    if (playerProfile) {
+      finalScore = await this.applySetSkillsToScore(playerProfile.id, state.practiceScore);
+    }
+    
+    const spiritResult = await addSpiritPower(playerName, finalScore, 'practice');
     
     // 检查是否因为需要突破而被阻止（副本模式除外）
     if (spiritResult && spiritResult.blocked) {
@@ -3916,7 +4071,6 @@ ${text}`;
     }
     
     // 日常任务追踪
-    const playerProfile = await db.playerProfiles.where('playerName').equals(playerName).first();
     if (playerProfile) {
       // 1. 武魂修炼：完成一次拼写练习
       await this.trackDailyTask(playerProfile.id, 'cultivation');
@@ -4289,6 +4443,12 @@ ${text}`;
       
       // 渲染副本任务
       await this.renderDungeons(playerName);
+      
+      // 渲染魂骨快速预览
+      const playerProfile = await db.playerProfiles.where('playerName').equals(playerName).first();
+      if (playerProfile) {
+        await this.renderSoulBoneQuickView(playerProfile.id);
+      }
     } else {
       document.getElementById('profile-total-practices').textContent = '0';
       document.getElementById('profile-total-words').textContent = '0';
@@ -4297,6 +4457,10 @@ ${text}`;
       document.getElementById('profile-recent-practices-card').style.display = 'none';
       document.getElementById('daily-tasks-list').innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">请先登录角色</div>';
       document.getElementById('dungeon-list').innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">请先登录角色</div>';
+      
+      // 重置魂骨快速预览
+      const quickViewEl = document.getElementById('soul-bone-quick-view');
+      if (quickViewEl) quickViewEl.textContent = '请先登录角色';
     }
   },
 
@@ -6543,6 +6707,473 @@ ${wordList}
       this.endSentencePractice();
       this.showToast('已退出练习', 'info');
     }
+  },
+
+  // ===== 魂骨系统 UI 函数（阶段四/五） =====
+
+  // 打开魂骨图鉴页面（阶段五：任务5.1）
+  async openSoulBoneGallery() {
+    const playerId = await this.getCurrentPlayerId();
+    if (!playerId) {
+      this.showToast('请先选择角色', 'warning');
+      return;
+    }
+
+    this.navigate('soulbone-gallery');
+    await this.renderSoulBoneGallery(playerId);
+  },
+
+  // 渲染魂骨图鉴（阶段五：任务5.1）
+  async renderSoulBoneGallery(playerId) {
+    const allBones = await db.soulBones.where('playerId').equals(playerId).toArray();
+    const collectedSet = new Set(allBones.map(b => `${b.beastType}_${b.slot}`));
+
+    // 渲染5×5表格
+    const tbody = document.getElementById('soulbone-gallery-tbody');
+    const slots = SOUL_BONE_SLOTS;
+    const beasts = Object.keys(SOUL_BONE_TYPES);
+
+    tbody.innerHTML = slots.map(slot => `
+      <tr>
+        <td style="padding: 8px; border: 1px solid var(--border); font-weight: 600;">${SOUL_BONE_SLOT_NAMES[slot]}</td>
+        ${beasts.map(beast => {
+          const key = `${beast}_${slot}`;
+          const owned = collectedSet.has(key);
+          const boneNames = SOUL_BONE_NAMES[beast];
+          const name = boneNames ? (boneNames[slot] || '???') : '???';
+          const beastInfo = SOUL_BONE_TYPES[beast];
+          return `
+            <td class="soulbone-gallery-cell ${owned ? 'owned' : 'not-owned'}" 
+                onclick="app.openSoulBoneDetailModal('${beast}', '${slot}')"
+                style="color: ${owned ? beastInfo.color : 'var(--text-muted)'};">
+              ${owned ? `${beastInfo.icon}<br>${name}` : '???'}
+            </td>
+          `;
+        }).join('')}
+      </tr>
+    `).join('');
+
+    // 更新收集进度
+    const totalCells = beasts.length * slots.length;
+    const collectedCount = collectedSet.size;
+    document.getElementById('soulbone-gallery-progress').textContent = `已收集：${collectedCount}/${totalCells}`;
+
+    // 渲染套装收集进度
+    const setProgressList = document.getElementById('soulbone-set-progress-list');
+    setProgressList.innerHTML = beasts.map(beast => {
+      const beastInfo = SOUL_BONE_TYPES[beast];
+      const ownedCount = allBones.filter(b => b.beastType === beast).length;
+      const progress = Math.min(ownedCount / 5 * 100, 100);
+      const isActivated = ownedCount >= 5;
+      return `
+        <div>
+          <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
+            <span>${beastInfo.icon} ${beastInfo.name}</span>
+            <span>${ownedCount}/5 ${isActivated ? '✓ 已激活' : ''}</span>
+          </div>
+          <div style="height: 6px; background: rgba(0,0,0,0.1); border-radius: 3px; overflow: hidden;">
+            <div style="height: 100%; background: ${beastInfo.color}; width: ${progress}%; transition: width 0.3s;"></div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  },
+
+  // 打开魂骨详情弹窗（阶段五：任务5.2）
+  async openSoulBoneDetailModal(beastType, slot) {
+    const playerId = await this.getCurrentPlayerId();
+    if (!playerId) return;
+
+    const bones = await db.soulBones
+      .where({ playerId, beastType, slot })
+      .toArray();
+
+    if (bones.length === 0) {
+      this.showToast('还未获得该魂骨', 'info');
+      return;
+    }
+
+    const beastInfo = SOUL_BONE_TYPES[beastType];
+    document.getElementById('soulbone-detail-title').textContent = `${beastInfo.icon} ${beastInfo.name}·${SOUL_BONE_SLOT_NAMES[slot]}`;
+
+    const listEl = document.getElementById('soulbone-detail-list');
+    listEl.innerHTML = bones.map((bone, index) => `
+      <div style="padding: 12px; background: ${bone.isEquipped ? 'rgba(255,215,0,0.1)' : 'var(--bg-tertiary)'}; border-radius: var(--radius); border: 1px solid ${bone.isEquipped ? '#FFD700' : 'var(--border)'};">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <span style="font-weight: 600;">#${index + 1} ${bone.name}</span>
+          <div style="display: flex; gap: 4px;">
+            ${bone.isEquipped ? '<span style="font-size: 10px; padding: 2px 6px; background: #FFD700; color: #000; border-radius: 4px;">已装备</span>' : ''}
+            ${bone.isIdentified ? '<span style="font-size: 10px; padding: 2px 6px; background: #2ecc71; color: #fff; border-radius: 4px;">已鉴定</span>' : '<span style="font-size: 10px; padding: 2px 6px; background: #95a5a6; color: #fff; border-radius: 4px;">未鉴定</span>'}
+          </div>
+        </div>
+        ${bone.isIdentified ? `
+          <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 10px;">
+            ${bone.attributeIcon} ${bone.attributeName} +${bone.attributeValue}
+          </div>
+        ` : `
+          <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 10px;">属性未鉴定</div>
+        `}
+        <div style="display: flex; gap: 8px;">
+          ${!bone.isIdentified ? `
+            <button class="btn btn-primary" style="flex: 1; padding: 6px; font-size: 12px;" onclick="app.identifySoulBoneWithAnimation(${bone.id})">
+              🔮 鉴定
+            </button>
+          ` : ''}
+          ${bone.isEquipped ? `
+            <button class="btn btn-outline" style="flex: 1; padding: 6px; font-size: 12px;" onclick="app.unequipSoulBoneAndRefresh(${bone.id}, '${beastType}', '${slot}')">
+              卸下
+            </button>
+          ` : `
+            <button class="btn btn-secondary" style="flex: 1; padding: 6px; font-size: 12px;" onclick="app.equipSoulBoneAndRefresh(${bone.id}, '${beastType}', '${slot}')">
+              装备
+            </button>
+          `}
+        </div>
+      </div>
+    `).join('');
+
+    document.getElementById('soulbone-detail-modal').classList.add('active');
+  },
+
+  // 关闭魂骨详情弹窗
+  closeSoulBoneDetailModal() {
+    document.getElementById('soulbone-detail-modal').classList.remove('active');
+  },
+
+  // 鉴定魂骨并播放动画（阶段四：任务4.3）
+  async identifySoulBoneWithAnimation(soulBoneId) {
+    const modal = document.getElementById('soulbone-identify-modal');
+    modal.classList.add('active');
+
+    const glowEl = document.getElementById('identify-glow');
+    const textEl = document.getElementById('identify-text');
+    const resultEl = document.getElementById('identify-result');
+
+    // 重置状态
+    glowEl.style.display = 'block';
+    textEl.textContent = '鉴定中...';
+    textEl.style.display = 'block';
+    resultEl.style.display = 'none';
+
+    // 播放鉴定动画（1.5秒）
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // 执行鉴定
+    const bone = await identifySoulBone(soulBoneId);
+    if (!bone) {
+      modal.classList.remove('active');
+      this.showToast('鉴定失败', 'error');
+      return;
+    }
+
+    // 显示结果
+    glowEl.style.display = 'none';
+    textEl.style.display = 'none';
+    resultEl.innerHTML = `
+      <div style="animation: identifyReveal 0.5s ease-out;">
+        <div style="font-size: 48px; margin-bottom: 16px;">${bone.attributeIcon}</div>
+        <div style="margin-bottom: 8px;">${bone.name}</div>
+        <div style="font-size: 14px; color: #fff;">${bone.attributeName} +${bone.attributeValue}</div>
+      </div>
+    `;
+    resultEl.style.display = 'block';
+
+    // 2秒后关闭
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    modal.classList.remove('active');
+
+    // 刷新当前页面
+    this.refreshSoulBonePages();
+  },
+
+  // 装备魂骨并刷新页面
+  async equipSoulBoneAndRefresh(soulBoneId, beastType, slot) {
+    const result = await equipSoulBone(soulBoneId);
+    if (result.success) {
+      this.showToast('装备成功', 'success');
+      this.refreshSoulBonePages();
+    } else {
+      this.showToast(result.reason || '装备失败', 'error');
+    }
+  },
+
+  // 卸下魂骨并刷新页面
+  async unequipSoulBoneAndRefresh(soulBoneId, beastType, slot) {
+    await unequipSoulBone(soulBoneId);
+    this.showToast('已卸下魂骨', 'success');
+    this.refreshSoulBonePages();
+  },
+
+  // 刷新魂骨相关页面
+  async refreshSoulBonePages() {
+    const playerId = await this.getCurrentPlayerId();
+    if (!playerId) return;
+
+    if (state.currentPage === 'soulbone-gallery') {
+      await this.renderSoulBoneGallery(playerId);
+    } else if (state.currentPage === 'soulbone-warehouse') {
+      await this.renderSoulBoneWarehouse(playerId);
+    }
+
+    // 刷新角色页面的魂骨快速预览
+    await this.renderSoulBoneQuickView(playerId);
+  },
+
+  // 打开魂骨仓库页面（阶段五：任务5.4）
+  async openSoulBoneWarehouse() {
+    const playerId = await this.getCurrentPlayerId();
+    if (!playerId) {
+      this.showToast('请先选择角色', 'warning');
+      return;
+    }
+
+    this.navigate('soulbone-warehouse');
+    await this.renderSoulBoneWarehouse(playerId);
+    this.setupSoulBoneFilterButtons();
+  },
+
+  // 渲染魂骨仓库（阶段五：任务5.4）
+  async renderSoulBoneWarehouse(playerId, filter = 'all') {
+    let bones = await db.soulBones.where('playerId').equals(playerId).toArray();
+
+    // 应用筛选
+    if (filter === 'identified') {
+      bones = bones.filter(b => b.isIdentified);
+    } else if (filter === 'unidentified') {
+      bones = bones.filter(b => !b.isIdentified);
+    } else if (filter === 'equipped') {
+      bones = bones.filter(b => b.isEquipped);
+    } else if (SOUL_BONE_TYPES[filter]) {
+      bones = bones.filter(b => b.beastType === filter);
+    }
+
+    // 更新数量显示
+    const allBones = await db.soulBones.where('playerId').equals(playerId).toArray();
+    document.getElementById('soulbone-warehouse-count').textContent = `共 ${allBones.length} 个`;
+
+    // 渲染列表
+    const listEl = document.getElementById('soulbone-warehouse-list');
+    if (bones.length === 0) {
+      listEl.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-muted);">暂无魂骨</div>';
+      return;
+    }
+
+    listEl.innerHTML = bones.map(bone => {
+      const beastInfo = SOUL_BONE_TYPES[bone.beastType];
+      return `
+        <div class="soulbone-warehouse-item ${bone.isEquipped ? 'equipped' : ''}" onclick="app.openSoulBoneDetailModal('${bone.beastType}', '${bone.slot}')">
+          <div style="font-size: 32px;">${beastInfo.icon}</div>
+          <div style="flex: 1;">
+            <div style="font-weight: 600; color: ${beastInfo.color};">${bone.name}</div>
+            <div style="font-size: 12px; color: var(--text-muted);">${SOUL_BONE_SLOT_NAMES[bone.slot]} · ${bone.beastName}</div>
+            ${bone.isIdentified ? `
+              <div style="font-size: 13px; margin-top: 4px;">${bone.attributeIcon} ${bone.attributeName} +${bone.attributeValue}</div>
+            ` : '<div style="font-size: 12px; color: var(--text-muted);">未鉴定</div>'}
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            ${bone.isEquipped ? '<span style="font-size: 10px; padding: 2px 6px; background: #FFD700; color: #000; border-radius: 4px;">已装备</span>' : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+  },
+
+  // 设置魂骨仓库筛选按钮
+  setupSoulBoneFilterButtons() {
+    const buttons = document.querySelectorAll('.soulbone-filter-btn');
+    buttons.forEach(btn => {
+      btn.onclick = async () => {
+        // 更新按钮状态
+        buttons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        const filter = btn.dataset.filter;
+        const playerId = await this.getCurrentPlayerId();
+        if (playerId) {
+          await this.renderSoulBoneWarehouse(playerId, filter);
+        }
+      };
+    });
+  },
+
+  // 关闭获得魂骨提示弹窗
+  closeSoulBoneAwardModal() {
+    document.getElementById('soulbone-award-modal').classList.remove('active');
+  },
+
+  // 显示获得魂骨提示（阶段四）
+  showSoulBoneAward(soulBone) {
+    const beastInfo = SOUL_BONE_TYPES[soulBone.beastType];
+    document.getElementById('soulbone-award-icon').textContent = beastInfo.icon;
+    document.getElementById('soulbone-award-name').textContent = soulBone.name;
+    document.getElementById('soulbone-award-desc').textContent = `${soulBone.beastName}·${soulBone.slotName} - 请到魂骨仓库查看`;
+    document.getElementById('soulbone-award-modal').classList.add('active');
+  },
+
+  // 渲染魂骨快速预览（角色页面）
+  async renderSoulBoneQuickView(playerId) {
+    const bones = await db.soulBones.where('playerId').equals(playerId).toArray();
+    const equipped = bones.filter(b => b.isEquipped);
+    const total = bones.length;
+
+    const quickViewEl = document.getElementById('soul-bone-quick-view');
+    if (!quickViewEl) return;
+
+    if (total === 0) {
+      quickViewEl.textContent = '还未获得魂骨，完成副本挑战获取魂骨吧！';
+      return;
+    }
+
+    quickViewEl.innerHTML = `
+      <div style="margin-bottom: 4px;">共收集 <strong>${total}</strong> 个魂骨，已装备 <strong>${equipped.length}</strong> 个</div>
+      ${equipped.length > 0 ? `
+        <div style="display: flex; flex-wrap: wrap; gap: 4px; justify-content: center;">
+          ${equipped.slice(0, 5).map(bone => {
+            const beastInfo = SOUL_BONE_TYPES[bone.beastType];
+            return `<span style="font-size: 16px;" title="${bone.name}">${beastInfo.icon}</span>`;
+          }).join('')}
+        </div>
+      ` : ''}
+    `;
+  },
+
+  // 获取当前角色ID
+  async getCurrentPlayerId() {
+    const profileName = document.getElementById('profile-player-name')?.textContent;
+    if (!profileName || profileName === 'Guest' || profileName === '未登录') {
+      return null;
+    }
+
+    const profile = await db.playerProfiles.where('playerName').equals(profileName).first();
+    return profile ? profile.id : null;
+  },
+
+  // ===== 套装技能应用到练习中（阶段四：任务4.5） =====
+
+  // 应用套装技能到积分计算
+  async applySetSkillsToScore(playerId, basePoints) {
+    if (!playerId) return basePoints;
+    
+    const equippedBones = await getEquippedSoulBones(playerId);
+    const activeSets = getSetBonus(equippedBones);
+    
+    let finalPoints = basePoints;
+    let notifications = [];
+
+    // 曼陀罗蛇套装：积分翻倍
+    if (activeSets.find(s => s.beastType === 'mantuo')) {
+      finalPoints *= 2;
+      notifications.push('🐍 曼陀罗蛇套装触发：积分翻倍！');
+    }
+
+    // 七宝琉璃套装：失败获积分（在失败时处理，这里不处理）
+    
+    if (notifications.length > 0) {
+      this.showToast(notifications.join(' '), 'success');
+    }
+
+    return Math.floor(finalPoints);
+  },
+
+  // 检查失败重生技能（柔骨兔套装）
+  async checkExtraLife(playerId) {
+    if (!playerId) return false;
+    
+    const equippedBones = await getEquippedSoulBones(playerId);
+    const activeSets = getSetBonus(equippedBones);
+    
+    return !!activeSets.find(s => s.beastType === 'rougu');
+  },
+
+  // 应用失败重生（僵尸退回中间）
+  applyExtraLife() {
+    state.extraLifeUsed = true;
+    state.zombiePosition = Math.max(0, state.zombiePosition - 30);
+    this.updateZombiePosition();
+    this.showToast('🐰 柔骨兔套装触发：失败重生！僵尸后退30%', 'success');
+  },
+
+  // 检查连击不断技能（邪眸白虎套装）
+  async handleComboBreak(playerId) {
+    if (!playerId) {
+      state.consecutiveCorrectCount = 0;
+      return;
+    }
+    
+    const equippedBones = await getEquippedSoulBones(playerId);
+    const activeSets = getSetBonus(equippedBones);
+    
+    if (activeSets.find(s => s.beastType === 'xiehou')) {
+      // 连击减一而非重置
+      state.consecutiveCorrectCount = Math.max(0, state.consecutiveCorrectCount - 1);
+      this.showToast('🐯 邪眸白虎套装触发：连击不断！连击-1而非清零', 'info');
+    } else {
+      // 正常重置
+      state.consecutiveCorrectCount = 0;
+    }
+  },
+
+  // 检查答错不惩罚技能（幽冥灵猫套装）
+  async checkWrongAnswerPenalty(playerId) {
+    if (!playerId) return false;
+    
+    const equippedBones = await getEquippedSoulBones(playerId);
+    const activeSets = getSetBonus(equippedBones);
+    
+    if (activeSets.find(s => s.beastType === 'youming')) {
+      this.showToast('🐱 幽冥灵猫套装触发：答错不惩罚！', 'info');
+      return true;
+    }
+    return false;
+  },
+
+  // 检查失败获积分技能（七宝琉璃套装）
+  async applyConsolationPoints(playerId, basePoints) {
+    if (!playerId) return 0;
+    
+    const equippedBones = await getEquippedSoulBones(playerId);
+    const activeSets = getSetBonus(equippedBones);
+    
+    if (activeSets.find(s => s.beastType === 'qibao')) {
+      const consolationPoints = Math.floor(basePoints * 0.5);
+      this.showToast(`💎 七宝琉璃套装触发：失败获得${consolationPoints}积分！`, 'success');
+      return consolationPoints;
+    }
+    return 0;
+  },
+
+  // 获取玩家属性（用于僵尸对战，阶段六预留）
+  async getPlayerStats(playerId) {
+    if (!playerId) {
+      return { health: 1000, defense: 0, dodge: 0, knockback: 1, zombieSlow: 0 };
+    }
+    
+    const equippedBones = await getEquippedSoulBones(playerId);
+    let stats = { health: 1000, defense: 0, dodge: 0, knockback: 1, zombieSlow: 0 };
+    
+    equippedBones.forEach(bone => {
+      if (bone.isEquipped && bone.isIdentified) {
+        switch (bone.attributeType) {
+          case 'health':
+            stats.health += bone.attributeValue;
+            break;
+          case 'defense':
+            stats.defense += bone.attributeValue;
+            break;
+          case 'dodge':
+            stats.dodge += bone.attributeValue / 100;
+            break;
+          case 'knockback':
+            stats.knockback += bone.attributeValue / 100;
+            break;
+          case 'slow':
+            stats.zombieSlow += bone.attributeValue / 100;
+            break;
+        }
+      }
+    });
+    
+    return stats;
   }
 };
 
