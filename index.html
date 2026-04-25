@@ -2103,6 +2103,33 @@
           <i class="fa fa-diamond"></i> 魂骨仓库
         </button>
 
+        <!-- 已装备魂骨展示 -->
+        <div class="card">
+          <div class="card-title">
+            <i class="fa fa-diamond" style="color: #9b59b6;"></i>
+            <span>已装备魂骨</span>
+            <span id="equipped-bones-count" style="font-size: 12px; color: var(--text-muted); margin-left: auto;"></span>
+          </div>
+          <div id="equipped-soul-bones-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px;">
+            <div style="text-align: center; padding: 20px; color: var(--text-muted); grid-column: 1 / -1;">
+              还未装备魂骨，点击"魂骨仓库"按钮去装备吧！
+            </div>
+          </div>
+        </div>
+
+        <!-- 魂骨附加属性 -->
+        <div class="card">
+          <div class="card-title">
+            <i class="fa fa-plus-circle" style="color: #2ecc71;"></i>
+            <span>魂骨属性加成</span>
+          </div>
+          <div id="soul-bone-bonus-stats" style="display: flex; flex-wrap: wrap; gap: 8px;">
+            <div style="text-align: center; padding: 20px; color: var(--text-muted); width: 100%;">
+              装备魂骨后将显示属性加成
+            </div>
+          </div>
+        </div>
+
         <!-- 个人统计 -->
         <div class="card">
           <div class="card-title">个人统计</div>
@@ -2206,6 +2233,19 @@
           <i class="fa fa-archive" style="color: #9b59b6;"></i>
           <span>魂骨仓库</span>
           <span id="soulbone-warehouse-count" style="font-size: 12px; color: var(--text-muted); margin-left: auto;"></span>
+        </div>
+
+        <!-- 搜索栏 -->
+        <div class="card" style="padding: 12px;">
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="soulbone-search-input" placeholder="输入魂骨名称搜索..." style="flex: 1; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 14px; background: var(--bg-tertiary);">
+            <button class="btn btn-primary" onclick="app.searchSoulBones()">
+              <i class="fa fa-search"></i> 搜索
+            </button>
+            <button class="btn btn-outline" onclick="app.clearSoulBoneSearch()">
+              <i class="fa fa-times"></i> 清除
+            </button>
+          </div>
         </div>
 
         <!-- 筛选功能 -->
@@ -3005,6 +3045,6 @@
   </div>
 
   <script src="image-editor.js"></script>
-  <script src="app.js?v=13"></script>
+  <script src="app.js?v=18"></script>
 </body>
 </html>

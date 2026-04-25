@@ -628,34 +628,35 @@ const SOUL_BONE_TYPES = {
   qibao:    { name: '七宝琉璃', color: '#FFD700', icon: '💎', setSkill: '失败获积分', setSkillDesc: '挑战失败也能获得50%积分' }
 };
 
-// 魂骨名称配置（阶段四：任务 4.2）
+// 魂骨部位配置（5个部位，根据策划文档）
+const SOUL_BONE_SLOTS = ['head', 'body', 'left_arm', 'right_leg', 'external'];
+const SOUL_BONE_SLOT_NAMES = {
+  head: '头骨', body: '躯干骨', left_arm: '左臂骨',
+  right_leg: '右腿骨', external: '外附魂骨'
+};
+
+// 魂骨名称配置（5种魂兽 × 5个部位 = 25种魂骨）
 const SOUL_BONE_NAMES = {
   mantuo: {
     head: '毒瞳蛇皇颅', body: '龙鳞蛇甲', left_arm: '噬毒蟒臂',
-    right_arm: '裂风蟒臂', left_leg: '疾风蛇行靴', right_leg: '蛇影追风靴', external: '蛇魔蛛矛'
+    right_leg: '疾风蛇行靴', external: '蛇魔蛛矛'
   },
   rougu: {
     head: '月魄兔灵冠', body: '玉骨冰肌衣', left_arm: '粉玉柔臂',
-    right_arm: '凝霜兔臂', left_leg: '踏月追云靴', right_leg: '冰晶兔腿', external: '冰晶兔绒翼'
+    right_leg: '踏月追云靴', external: '冰晶兔绒翼'
   },
   xiehou: {
     head: '霸虎啸天冠', body: '金刚虎躯铠', left_arm: '裂风虎臂',
-    right_arm: '狂虎碎岩臂', left_leg: '狂虎奔雷靴', right_leg: '白虎踏雪靴', external: '白虎金刚翼'
+    right_leg: '狂虎奔雷靴', external: '白虎金刚翼'
   },
   youming: {
     head: '影魅幽魂冠', body: '夜行影魅袍', left_arm: '瞬影猫臂',
-    right_arm: '幽冥猎手臂', left_leg: '幽灵鬼影迷', right_leg: '暗夜潜行靴', external: '幽冥影刃'
+    right_leg: '幽灵鬼影迷', external: '幽冥影刃'
   },
   qibao: {
     head: '琉璃幻心冕', body: '七彩云烟铠', left_arm: '玲珑水晶臂',
-    right_arm: '七宝琉璃臂', left_leg: '流光飞羽靴', right_leg: '彩云追月靴', external: '七宝玲珑塔'
+    right_leg: '流光飞羽靴', external: '七宝玲珑塔'
   }
-};
-
-const SOUL_BONE_SLOTS = ['head', 'body', 'left_arm', 'right_arm', 'left_leg', 'right_leg', 'external'];
-const SOUL_BONE_SLOT_NAMES = {
-  head: '头骨', body: '躯干骨', left_arm: '左臂骨', right_arm: '右臂骨',
-  left_leg: '左腿骨', right_leg: '右腿骨', external: '外附魂骨'
 };
 
 const SOUL_BONE_ATTRIBUTES = [
@@ -717,7 +718,15 @@ async function equipSoulBone(soulBoneId) {
   if (bone.isEquipped) return { success: false, reason: '已装备' };
   
   // 卸下同部位的已装备魂骨
-  await db.soulBones.where({ playerId: bone.playerId, slot: bone.slot, isEquipped: true }).modify({ isEquipped: false });
+  const sameSlotEquipped = await db.soulBones
+    .where('playerId')
+    .equals(bone.playerId)
+    .and(b => b.slot === bone.slot && b.isEquipped)
+    .toArray();
+  
+  for (const equippedBone of sameSlotEquipped) {
+    await db.soulBones.update(equippedBone.id, { isEquipped: false });
+  }
   
   // 装备新魂骨
   await db.soulBones.update(soulBoneId, { isEquipped: true });
@@ -779,6 +788,45 @@ function getSetBonus(equippedBones) {
   }
   
   return bonuses;
+}
+
+// 清理重复装备的魂骨（每个部位只能装备一个）
+async function cleanupDuplicateEquippedBones() {
+  const allProfiles = await db.playerProfiles.toArray();
+  let cleanedCount = 0;
+  
+  for (const profile of allProfiles) {
+    const equippedBones = await db.soulBones
+      .where('playerId')
+      .equals(profile.id)
+      .and(b => b.isEquipped)
+      .toArray();
+    
+    // 按部位分组
+    const bySlot = {};
+    equippedBones.forEach(bone => {
+      if (!bySlot[bone.slot]) bySlot[bone.slot] = [];
+      bySlot[bone.slot].push(bone);
+    });
+    
+    // 对每个部位，只保留第一个装备的，其余卸下
+    for (const slot of Object.keys(bySlot)) {
+      const bones = bySlot[slot];
+      if (bones.length > 1) {
+        // 保留第一个，卸下其余的
+        for (let i = 1; i < bones.length; i++) {
+          await db.soulBones.update(bones[i].id, { isEquipped: false });
+          cleanedCount++;
+        }
+      }
+    }
+  }
+  
+  if (cleanedCount > 0) {
+    console.log(`已清理 ${cleanedCount} 个重复装备的魂骨`);
+  }
+  
+  return cleanedCount;
 }
 
 // 获取激活的套装技能列表
@@ -4490,6 +4538,8 @@ ${text}`;
       const playerProfile = await db.playerProfiles.where('playerName').equals(playerName).first();
       if (playerProfile) {
         await this.renderSoulBoneQuickView(playerProfile.id);
+        await this.renderEquippedSoulBones(playerProfile.id);
+        await this.renderSoulBoneBonusStats(playerProfile.id);
       }
     } else {
       document.getElementById('profile-total-practices').textContent = '0';
@@ -4500,9 +4550,12 @@ ${text}`;
       document.getElementById('daily-tasks-list').innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">请先登录角色</div>';
       document.getElementById('dungeon-list').innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">请先登录角色</div>';
       
-      // 重置魂骨快速预览
-      const quickViewEl = document.getElementById('soul-bone-quick-view');
-      if (quickViewEl) quickViewEl.textContent = '请先登录角色';
+      // 重置魂骨显示
+      const equippedListEl = document.getElementById('equipped-soul-bones-list');
+      if (equippedListEl) equippedListEl.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-muted); grid-column: 1 / -1;">请先登录角色</div>';
+      
+      const bonusStatsEl = document.getElementById('soul-bone-bonus-stats');
+      if (bonusStatsEl) bonusStatsEl.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-muted); width: 100%;">请先登录角色</div>';
     }
   },
 
@@ -4929,6 +4982,11 @@ ${text}`;
     
     // 渲染副本任务（切换角色时刷新，确保每个角色看到自己的进度）
     await this.renderDungeons(playerName);
+    
+    // 渲染已装备魂骨和属性加成（确保每个角色显示自己的魂骨）
+    await this.renderEquippedSoulBones(profile.id);
+    await this.renderSoulBoneBonusStats(profile.id);
+    await this.renderSoulBoneQuickView(profile.id);
     
     // 更新角色选择器的高亮状态
     const selectorContainer = document.getElementById('profile-character-selector');
@@ -7002,8 +7060,10 @@ ${wordList}
       await this.renderSoulBoneWarehouse(playerId);
     }
 
-    // 刷新角色页面的魂骨快速预览
+    // 刷新角色页面的魂骨显示
     await this.renderSoulBoneQuickView(playerId);
+    await this.renderEquippedSoulBones(playerId);
+    await this.renderSoulBoneBonusStats(playerId);
   },
 
   // 打开魂骨仓库页面（阶段五：任务5.4）
@@ -7325,6 +7385,99 @@ ${wordList}
     document.getElementById('soulbone-award-modal').classList.remove('active');
   },
 
+  // 搜索魂骨（按名称搜索或输入"hdhg"获得随机魂骨）
+  async searchSoulBones() {
+    const input = document.getElementById('soulbone-search-input');
+    if (!input) return;
+
+    const keyword = input.value.trim().toLowerCase();
+
+    // 彩蛋：输入 "hdhg" 获得随机魂骨
+    if (keyword === 'hdhg') {
+      const playerId = await this.getCurrentPlayerId();
+      if (!playerId) {
+        this.showToast('请先选择角色', 'warning');
+        return;
+      }
+
+      // 随机生成一个魂骨
+      const newBone = await generateSoulBone(playerId, 1);
+      if (newBone) {
+        this.showToast('🎉 获得了神秘魂骨！', 'success');
+        // 显示获得魂骨的提示
+        this.showSoulBoneAward(newBone);
+        // 刷新仓库页面
+        const filterBtn = document.querySelector('.soulbone-filter-btn.active');
+        const filter = filterBtn ? filterBtn.dataset.filter : 'all';
+        await this.renderSoulBoneWarehouse(playerId, filter);
+      }
+      return;
+    }
+
+    // 按名称搜索魂骨
+    if (keyword.length === 0) {
+      this.showToast('请输入搜索关键词', 'info');
+      return;
+    }
+
+    const playerId = await this.getCurrentPlayerId();
+    if (!playerId) {
+      this.showToast('请先选择角色', 'warning');
+      return;
+    }
+
+    const allBones = await db.soulBones.where('playerId').equals(playerId).toArray();
+    const filtered = allBones.filter(bone => 
+      bone.name.toLowerCase().includes(keyword) ||
+      bone.beastName.toLowerCase().includes(keyword) ||
+      SOUL_BONE_SLOT_NAMES[bone.slot].includes(keyword)
+    );
+
+    // 渲染搜索结果到列表
+    const listEl = document.getElementById('soulbone-warehouse-list');
+    if (listEl) {
+      if (filtered.length === 0) {
+        listEl.innerHTML = `<div style="text-align: center; padding: 40px; color: var(--text-muted);">未找到包含"${keyword}"的魂骨</div>`;
+      } else {
+        listEl.innerHTML = `<div style="font-size: 13px; color: var(--text-muted); margin-bottom: 10px;">找到 ${filtered.length} 个匹配的魂骨：</div>` +
+          filtered.map(bone => {
+            const beastInfo = SOUL_BONE_TYPES[bone.beastType];
+            return `
+              <div class="soulbone-warehouse-item ${bone.isEquipped ? 'equipped' : ''}" onclick="app.openSoulBoneDetailModal('${bone.beastType}', '${bone.slot}')">
+                <div style="font-size: 32px;">${beastInfo.icon}</div>
+                <div style="flex: 1;">
+                  <div style="font-weight: 600; color: ${beastInfo.color};">${bone.name}</div>
+                  <div style="font-size: 12px; color: var(--text-muted);">${SOUL_BONE_SLOT_NAMES[bone.slot]} · ${bone.beastName}</div>
+                  ${bone.isIdentified ? `
+                    <div style="font-size: 13px; margin-top: 4px;">${bone.attributeIcon} ${bone.attributeName} +${bone.attributeValue}</div>
+                  ` : '<div style="font-size: 12px; color: var(--text-muted);">未鉴定</div>'}
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  ${bone.isEquipped ? '<span style="font-size: 10px; padding: 2px 6px; background: #FFD700; color: #000; border-radius: 4px;">已装备</span>' : ''}
+                </div>
+              </div>
+            `;
+          }).join('');
+      }
+    }
+
+    this.showToast(`找到 ${filtered.length} 个匹配结果`, 'info');
+  },
+
+  // 清除搜索
+  clearSoulBoneSearch() {
+    const input = document.getElementById('soulbone-search-input');
+    if (input) input.value = '';
+    // 重新渲染仓库
+    this.getCurrentPlayerId().then(playerId => {
+      if (playerId) {
+        const filterBtn = document.querySelector('.soulbone-filter-btn.active');
+        const filter = filterBtn ? filterBtn.dataset.filter : 'all';
+        this.renderSoulBoneWarehouse(playerId, filter);
+      }
+    });
+  },
+
   // 显示获得魂骨提示（阶段四）
   showSoulBoneAward(soulBone) {
     const beastInfo = SOUL_BONE_TYPES[soulBone.beastType];
@@ -7359,6 +7512,78 @@ ${wordList}
         </div>
       ` : ''}
     `;
+  },
+
+  // 渲染已装备魂骨列表（角色页面）- 简化文字显示
+  async renderEquippedSoulBones(playerId) {
+    const bones = await db.soulBones.where('playerId').equals(playerId).toArray();
+    const equipped = bones.filter(b => b.isEquipped);
+
+    const listEl = document.getElementById('equipped-soul-bones-list');
+    const countEl = document.getElementById('equipped-bones-count');
+    if (!listEl) return;
+
+    if (countEl) countEl.textContent = `已装备 ${equipped.length}/5`;
+
+    if (equipped.length === 0) {
+      listEl.innerHTML = '<div style="padding: 12px; color: var(--text-muted); font-size: 13px;">还未装备魂骨</div>';
+      return;
+    }
+
+    // 按部位排序显示，纯文字列表
+    const slotOrder = ['head', 'body', 'left_arm', 'right_leg', 'external'];
+    const sortedEquipped = [...equipped].sort((a, b) => slotOrder.indexOf(a.slot) - slotOrder.indexOf(b.slot));
+
+    listEl.innerHTML = sortedEquipped.map(bone => {
+      const beastInfo = SOUL_BONE_TYPES[bone.beastType];
+      const slotName = SOUL_BONE_SLOT_NAMES[bone.slot];
+      const attrText = bone.isIdentified ? ` [${bone.attributeName}+${bone.attributeValue}]` : ' [未鉴定]';
+      return `<div style="font-size: 13px; padding: 4px 0; color: var(--text-secondary);"><span style="color: ${beastInfo.color}; font-weight: 600;">${slotName}：${bone.name}</span>${attrText}</div>`;
+    }).join('');
+  },
+
+  // 渲染魂骨属性加成（角色页面）- 显示各项属性累加值
+  async renderSoulBoneBonusStats(playerId) {
+    const bones = await db.soulBones.where('playerId').equals(playerId).toArray();
+    const equipped = bones.filter(b => b.isEquipped && b.isIdentified);
+
+    const statsEl = document.getElementById('soul-bone-bonus-stats');
+    if (!statsEl) return;
+
+    if (equipped.length === 0) {
+      statsEl.innerHTML = '<div style="padding: 12px; color: var(--text-muted); font-size: 13px;">装备魂骨后将显示属性加成</div>';
+      return;
+    }
+
+    // 计算各项属性总和
+    const bonusStats = {
+      health: { name: '生命', total: 0, color: '#e74c3c' },
+      knockback: { name: '击退', total: 0, color: '#e67e22' },
+      dodge: { name: '闪避', total: 0, color: '#3498db' },
+      defense: { name: '防御', total: 0, color: '#2ecc71' },
+      slow: { name: '减速', total: 0, color: '#9b59b6' }
+    };
+
+    equipped.forEach(bone => {
+      if (bonusStats[bone.attributeType]) {
+        bonusStats[bone.attributeType].total += bone.attributeValue;
+      }
+    });
+
+    // 过滤出有值的属性
+    const activeStats = Object.entries(bonusStats)
+      .filter(([_, stat]) => stat.total > 0)
+      .map(([key, stat]) => stat);
+
+    if (activeStats.length === 0) {
+      statsEl.innerHTML = '<div style="padding: 12px; color: var(--text-muted); font-size: 13px;">暂无属性加成</div>';
+      return;
+    }
+
+    // 纯文字显示各项属性累加值，用空格分隔
+    statsEl.innerHTML = '<div style="font-size: 14px; line-height: 1.8;">' +
+      activeStats.map(stat => `<span style="color: ${stat.color}; font-weight: 700;">+${stat.total} ${stat.name}</span>`).join('  ') +
+      '</div>';
   },
 
   // 获取当前角色ID
@@ -7502,8 +7727,10 @@ ${wordList}
 };
 
 // Initialize when DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
-  app.init();
+document.addEventListener('DOMContentLoaded', async () => {
+  await app.init();
+  // 清理重复装备的魂骨
+  cleanupDuplicateEquippedBones();
 });
 
 // Register Service Worker for PWA
