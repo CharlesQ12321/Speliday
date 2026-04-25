@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>注入测试数据</title>
+  <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; }
+    button { padding: 15px 30px; margin: 10px; font-size: 16px; cursor: pointer; }
+    .log { background: #222; color: #0f0; padding: 10px; border-radius: 4px; font-family: monospace; white-space: pre-wrap; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h1>向主应用注入测试数据</h1>
+  <p>点击下面的按钮向主应用的 IndexedDB 注入测试角色数据：</p>
+  <button onclick="injectTestData()">注入 test 角色（900魂力，魂士Lv.9）</button>
+  <button onclick="injectTestDataMax()">注入 test 角色（1000魂力，魂士Lv.10满级）</button>
+  <button onclick="injectTestDataOver()">注入 test 角色（1100魂力，测试突破锁定）</button>
+  <button onclick="clearTestData()">清除 test 角色数据</button>
+  <hr style="margin: 20px 0;">
+  <h3>直接创建角色（模拟app.createNewPlayer逻辑）</h3>
+  <input type="text" id="new-player-name" placeholder="输入角色名" style="padding: 10px; font-size: 16px; width: 200px;">
+  <button onclick="createPlayerDirectly()">直接创建</button>
+  <button onclick="listAllPlayers()">列出所有角色</button>
+  <div id="log" class="log"></div>
+
+  <script>
+    let db;
+    async function initDB() {
+      db = new Dexie('SnapWordsDB');
+      db.version(12).stores({
+        words: '++id, word, translation, *bookIds, errorCount, correctCount, isReported, createdAt, lastPracticed',
+        books: '++id, bookId, bookName, createdAt',
+        settings: 'key, value',
+        practiceScores: '++id, playerName, totalScore, wordCount, correctCount, createdAt',
+        dailyPracticeSessions: '++id, date, completedAt',
+        playerProfiles: '++id, playerName, totalPoints, level, lastPlayedAt, avatar',
+        playerSpiritPower: '++id, playerId, totalSpiritPower, currentTier, currentLevel, lastUpdated, isBreakthroughReady, breakthroughCompleted',
+        dailyTasks: '++id, playerId, date, taskType, completed, reward',
+        dungeonProgress: '++id, playerId, dungeonId, isBreakthrough, completedCount, lastPlayed'
+      });
+    }
+
+    function log(msg) {
+      document.getElementById('log').textContent += msg + '\n';
+    }
+
+    async function injectTestData() {
+      await initDB();
+      await clearTestData();
+      // 创建角色：900魂力，魂士Lv.9
+      const profile = { playerName: 'test', totalPoints: 900, level: 9, lastPlayedAt: Date.now() };
+      const id = await db.playerProfiles.add(profile);
+      const spiritProfile = {
+        playerId: id, totalSpiritPower: 900, currentTier: '魂士', currentLevel: 9,
+        isBreakthroughReady: false, breakthroughCompleted: true, lastUpdated: Date.now()
+      };
+      await db.playerSpiritPower.add(spiritProfile);
+      log('已注入 test 角色：900魂力，魂士Lv.9');
+      log('请现在打开主应用 http://localhost:8080 查看"我的"页面');
+    }
+
+    async function injectTestDataMax() {
+      await initDB();
+      await clearTestData();
+      // 创建角色：1000魂力，魂士Lv.10满级，但未突破
+      const profile = { playerName: 'test', totalPoints: 1000, level: 10, lastPlayedAt: Date.now() };
+      const id = await db.playerProfiles.add(profile);
+      const spiritProfile = {
+        playerId: id, totalSpiritPower: 1000, currentTier: '魂士', currentLevel: 10,
+        isBreakthroughReady: true, breakthroughCompleted: false, lastUpdated: Date.now()
+      };
+      await db.playerSpiritPower.add(spiritProfile);
+      log('已注入 test 角色：1000魂力，魂士Lv.10满级，breakthroughCompleted=false');
+      log('请现在打开主应用 http://localhost:8080 查看"我的"页面，应该显示"待突破"');
+    }
+
+    async function injectTestDataOver() {
+      await initDB();
+      await clearTestData();
+      // 创建角色：1100魂力，但未突破，应该被锁定在魂士Lv.10
+      const profile = { playerName: 'test', totalPoints: 1100, level: 10, lastPlayedAt: Date.now() };
+      const id = await db.playerProfiles.add(profile);
+      const spiritProfile = {
+        playerId: id, totalSpiritPower: 1100, currentTier: '魂士', currentLevel: 10,
+        isBreakthroughReady: true, breakthroughCompleted: false, lastUpdated: Date.now()
+      };
+      await db.playerSpiritPower.add(spiritProfile);
+      log('已注入 test 角色：1100魂力，但未突破，应该显示魂士Lv.10[待突破]');
+      log('请现在打开主应用 http://localhost:8080 查看"我的"页面');
+    }
+
+    async function clearTestData() {
+      await initDB();
+      const existing = await db.playerProfiles.where('playerName').equals('test').first();
+      if (existing) {
+        await db.playerProfiles.delete(existing.id);
+        const spirit = await db.playerSpiritPower.where('playerId').equals(existing.id).first();
+        if (spirit) await db.playerSpiritPower.delete(spirit.id);
+        log('已清除 test 角色数据');
+      } else {
+        log('没有 test 角色数据');
+      }
+    }
+
+    async function createPlayerDirectly() {
+      const playerName = document.getElementById('new-player-name').value.trim();
+      if (!playerName) {
+        log('请输入角色名称');
+        return;
+      }
+      await initDB();
+
+      // 检查是否已存在
+      const existing = await db.playerProfiles.where('playerName').equals(playerName).first();
+      if (existing) {
+        log('角色已存在: ' + playerName);
+        return;
+      }
+
+      try {
+        // 创建玩家档案
+        const profile = {
+          playerName: playerName,
+          totalPoints: 0,
+          level: 1,
+          lastPlayedAt: Date.now()
+        };
+        const profileId = await db.playerProfiles.add(profile);
+        log('创建 playerProfiles 成功, id=' + profileId);
+
+        // 创建魂力档案
+        const spiritProfile = {
+          playerId: profileId,
+          totalSpiritPower: 0,
+          currentTier: '魂士',
+          currentLevel: 1,
+          isBreakthroughReady: false,
+          breakthroughCompleted: true,
+          lastUpdated: Date.now()
+        };
+        await db.playerSpiritPower.add(spiritProfile);
+        log('创建 playerSpiritPower 成功');
+
+        // 初始化日常任务
+        const today = new Date().toISOString().split('T')[0];
+        const taskTypes = ['cultivation', 'wordTraining', 'streak', 'perfect', 'sentenceTraining'];
+        for (const taskType of taskTypes) {
+          await db.dailyTasks.add({
+            playerId: profileId,
+            date: today,
+            taskType: taskType,
+            completed: false,
+            progress: 0,
+            reward: 0,
+            completedAt: null
+          });
+        }
+        log('初始化日常任务成功');
+
+        log('角色 "' + playerName + '" 创建成功！');
+      } catch (error) {
+        log('创建失败: ' + error.message);
+        console.error(error);
+      }
+    }
+
+    async function listAllPlayers() {
+      await initDB();
+      const profiles = await db.playerProfiles.toArray();
+      log('=== 所有角色 ===');
+      for (const p of profiles) {
+        log('  ' + p.playerName + ' (id=' + p.id + ', totalPoints=' + p.totalPoints + ')');
+      }
+      if (profiles.length === 0) log('  没有角色');
+    }
+
+    window.onload = () => {
+      log('页面已加载，点击按钮注入测试数据');
+    };
+  </script>
+</body>
+</html>

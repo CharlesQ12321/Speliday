@@ -1250,6 +1250,18 @@
       75% { transform: translateX(10px); }
     }
 
+    /* 突破任务提醒动画 */
+    @keyframes pulse-red {
+      0%, 100% { 
+        transform: scale(1);
+        box-shadow: 0 4px 15px rgba(255, 59, 59, 0.4);
+      }
+      50% { 
+        transform: scale(1.02);
+        box-shadow: 0 6px 25px rgba(255, 59, 59, 0.6);
+      }
+    }
+
     .bounce {
       animation: bounce 0.5s;
     }
@@ -1948,10 +1960,25 @@
           <div style="display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; -webkit-overflow-scrolling: touch;" id="profile-character-selector">
             <!-- 角色卡片将通过 JavaScript 动态生成 -->
           </div>
+          <button class="btn btn-primary btn-block" onclick="app.openCreatePlayerModal()" style="margin-top: 8px;">
+            <i class="fa fa-plus"></i> 创建新角色
+          </button>
         </div>
         
         <!-- 玩家信息卡片 -->
         <div style="background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); border-radius: var(--radius-lg); padding: 24px; color: white; margin-bottom: 20px; position: relative; overflow: hidden;">
+          <!-- 突破任务提醒横幅 -->
+          <div id="profile-breakthrough-alert" style="display: none; background: linear-gradient(90deg, #FF6B6B, #FF3B3B); border-radius: 8px; padding: 16px; margin-bottom: 16px; animation: pulse-red 2s infinite; box-shadow: 0 4px 15px rgba(255, 59, 59, 0.4);">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <div style="font-size: 32px; animation: shake 0.5s infinite;">⚠️</div>
+              <div style="flex: 1;">
+                <div style="font-size: 16px; font-weight: 700; margin-bottom: 4px;">🔴 突破任务待完成！</div>
+                <div style="font-size: 13px; opacity: 0.95;">当前等级已达到满级，需要完成突破任务才能继续提升魂力</div>
+              </div>
+              <div style="font-size: 40px; opacity: 0.3;">🐲</div>
+            </div>
+          </div>
+          
           <div style="position: relative; z-index: 1;">
             <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 20px;">
               <div style="position: relative;">
@@ -2697,11 +2724,83 @@
     <!-- Hidden import file input -->
     <input type="file" id="import-file" accept=".json" onchange="app.handleImport(this)" style="display: none;">
 
+    <!-- Create Player Modal -->
+    <div class="modal-overlay" id="create-player-modal" onclick="if(event.target===this)app.closeCreatePlayerModal()">
+      <div class="modal" style="max-width: 400px;">
+        <div class="modal-header">
+          <div class="modal-title">创建新角色</div>
+          <button class="modal-close" onclick="app.closeCreatePlayerModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="input-group">
+            <label class="input-label">角色名称</label>
+            <input type="text" class="input" id="create-player-name" placeholder="请输入角色名称（2-10个字符）" maxlength="10">
+          </div>
+          <div style="font-size: 12px; color: var(--text-muted); margin-top: 8px;">
+            <i class="fa fa-info-circle"></i> 新角色初始等级为魂士 Lv.1，初始魂力为 0
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="app.closeCreatePlayerModal()">取消</button>
+          <button class="btn btn-primary" onclick="app.createNewPlayer()">创建角色</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Toast -->
     <div class="toast" id="toast"></div>
+
+    <!-- Dungeon Complete Modal (阶段三：副本结算界面) -->
+    <div class="modal-overlay" id="dungeon-complete-modal">
+      <div class="modal" style="max-width: 420px; text-align: center;">
+        <div class="modal-header" style="justify-content: center; border-bottom: none; padding-bottom: 0;">
+          <div class="modal-title" style="font-size: 20px;" id="dungeon-complete-title">🎉 副本完成！</div>
+        </div>
+        <div class="modal-body" style="padding: 16px 24px;">
+          <div id="dungeon-complete-icon" style="font-size: 48px; margin-bottom: 12px;">⚔️</div>
+          <div id="dungeon-complete-result" style="font-size: 28px; font-weight: 700; color: var(--primary); margin-bottom: 8px;">挑战成功</div>
+          <div id="dungeon-complete-name" style="font-size: 14px; color: var(--text-muted); margin-bottom: 20px;">诺丁学院</div>
+          
+          <div style="background: var(--bg-secondary); border-radius: var(--radius); padding: 16px; margin-bottom: 16px;">
+            <div style="font-size: 36px; font-weight: 800; color: var(--primary);" id="dungeon-complete-points">+500</div>
+            <div style="font-size: 14px; color: var(--text-muted);">获得魂力</div>
+          </div>
+          
+          <div id="dungeon-complete-stats" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 16px;">
+            <div style="background: var(--bg-secondary); border-radius: var(--radius); padding: 12px;">
+              <div style="font-size: 18px; font-weight: 700;" id="dungeon-stat-words">50</div>
+              <div style="font-size: 11px; color: var(--text-muted);">单词数</div>
+            </div>
+            <div style="background: var(--bg-secondary); border-radius: var(--radius); padding: 12px;">
+              <div style="font-size: 18px; font-weight: 700;" id="dungeon-stat-accuracy">100%</div>
+              <div style="font-size: 11px; color: var(--text-muted);">正确率</div>
+            </div>
+            <div style="background: var(--bg-secondary); border-radius: var(--radius); padding: 12px;">
+              <div style="font-size: 18px; font-weight: 700;" id="dungeon-stat-remaining">3</div>
+              <div style="font-size: 11px; color: var(--text-muted);">剩余次数</div>
+            </div>
+          </div>
+          
+          <div id="dungeon-complete-soulbone" style="display: none; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; color: white;">
+            <div style="font-size: 14px; opacity: 0.9;">🎁 魂骨掉落</div>
+            <div style="font-size: 18px; font-weight: 700; margin-top: 4px;" id="dungeon-soulbone-name">曼陀罗蛇头骨</div>
+            <div style="font-size: 12px; opacity: 0.8; margin-top: 4px;">❤️ 生命 +15</div>
+          </div>
+          
+          <div id="dungeon-complete-breakthrough" style="display: none; background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; color: white; animation: pulse-red 2s infinite;">
+            <div style="font-size: 16px; font-weight: 700;">⚡ 突破成功！</div>
+            <div style="font-size: 13px; margin-top: 4px; opacity: 0.9;">获得魂环称号：<strong id="dungeon-breakthrough-title">百年魂环</strong></div>
+            <div style="font-size: 13px; margin-top: 4px; opacity: 0.9;">额外奖励：<strong id="dungeon-breakthrough-bonus">+500 魂力</strong></div>
+          </div>
+        </div>
+        <div class="modal-footer" style="justify-content: center;">
+          <button class="btn btn-primary" onclick="app.closeDungeonCompleteModal()" style="min-width: 120px;">确定</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="image-editor.js"></script>
-  <script src="app.js"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>

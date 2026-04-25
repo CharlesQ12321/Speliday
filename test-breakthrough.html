@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>突破机制测试</title>
+  <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
+    h1 { color: #333; }
+    .section { background: #f5f5f5; padding: 15px; margin: 15px 0; border-radius: 8px; }
+    button { padding: 10px 20px; margin: 5px; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; }
+    button:hover { background: #e0e0e0; }
+    .log { background: #222; color: #0f0; padding: 10px; border-radius: 4px; font-family: monospace; white-space: pre-wrap; max-height: 400px; overflow-y: auto; }
+    .error { color: #f66; }
+    .success { color: #6f6; }
+    .info { color: #ff6; }
+    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background: #4CAF50; color: white; }
+  </style>
+</head>
+<body>
+  <h1>斗罗大陆魂力突破机制测试</h1>
+
+  <div class="section">
+    <h2>测试控制</h2>
+    <button onclick="initTest()">1. 初始化测试环境（添加单词）</button>
+    <button onclick="createTestPlayer()">2. 创建 test 角色</button>
+    <button onclick="addSpiritPowerTest(100)">3. 增加100魂力</button>
+    <button onclick="addSpiritPowerTest(500)">4. 增加500魂力</button>
+    <button onclick="addSpiritPowerTest(400)">5. 增加400魂力（达到1000）</button>
+    <button onclick="addSpiritPowerTest(100)">6. 再增加100魂力（测试突破锁定）</button>
+    <button onclick="completeBreakthroughTest()">7. 完成突破任务</button>
+    <button onclick="addSpiritPowerTest(100)">8. 突破后再增加100魂力</button>
+    <button onclick="showStatus()">显示当前状态</button>
+    <button onclick="clearData()">清除所有数据</button>
+  </div>
+
+  <div class="section">
+    <h2>测试结果日志</h2>
+    <div id="log" class="log"></div>
+  </div>
+
+  <div class="section">
+    <h2>当前状态</h2>
+    <div id="status"></div>
+  </div>
+
+  <script>
+    const SPIRIT_LEVEL_SYSTEM = {
+      tiers: [
+        { id: 1, name: '魂士', icon: '🌱', color: '#8B4513', levels: 10, spiritPowerPerLevel: 100, cumulativeStart: 0 },
+        { id: 2, name: '魂师', icon: '⚔️', color: '#4169E1', levels: 10, spiritPowerPerLevel: 300, cumulativeStart: 1000 },
+        { id: 3, name: '大魂师', icon: '🛡️', color: '#32CD32', levels: 10, spiritPowerPerLevel: 800, cumulativeStart: 4000 }
+      ]
+    };
+
+    let db;
+
+    function log(msg, type = 'info') {
+      const logEl = document.getElementById('log');
+      const time = new Date().toLocaleTimeString();
+      const className = type === 'error' ? 'error' : type === 'success' ? 'success' : 'info';
+      logEl.innerHTML += `<span class="${className}">[${time}] ${msg}</span>\n`;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    async function initDB() {
+      db = new Dexie('SnapWordsDB');
+      db.version(12).stores({
+        words: '++id, word, translation, *bookIds, errorCount, correctCount, isReported, createdAt, lastPracticed',
+        books: '++id, bookId, bookName, createdAt',
+        settings: 'key, value',
+        practiceScores: '++id, playerName, totalScore, wordCount, correctCount, createdAt',
+        dailyPracticeSessions: '++id, date, completedAt',
+        playerProfiles: '++id, playerName, totalPoints, level, lastPlayedAt, avatar',
+        playerSpiritPower: '++id, playerId, totalSpiritPower, currentTier, currentLevel, lastUpdated, isBreakthroughReady, breakthroughCompleted',
+        dailyTasks: '++id, playerId, date, taskType, completed, reward',
+        dungeonProgress: '++id, playerId, dungeonId, isBreakthrough, completedCount, lastPlayed'
+      });
+      log('数据库初始化完成', 'success');
+    }
+
+    async function initTest() {
+      await initDB();
+      // 添加测试单词
+      const testWords = [
+        { word: 'apple', translation: '苹果', bookIds: [1], errorCount: 0, correctCount: 0, isReported: false, createdAt: Date.now() },
+        { word: 'book', translation: '书', bookIds: [1], errorCount: 0, correctCount: 0, isReported: false, createdAt: Date.now() },
+        { word: 'cat', translation: '猫', bookIds: [1], errorCount: 0, correctCount: 0, isReported: false, createdAt: Date.now() },
+        { word: 'dog', translation: '狗', bookIds: [1], errorCount: 0, correctCount: 0, isReported: false, createdAt: Date.now() },
+        { word: 'egg', translation: '蛋', bookIds: [1], errorCount: 0, correctCount: 0, isReported: false, createdAt: Date.now() }
+      ];
+      await db.words.clear();
+      for (const word of testWords) {
+        await db.words.add(word);
+      }
+      log('已添加5个测试单词', 'success');
+    }
+
+    function calculateSpiritLevel(totalSpiritPower, breakthroughCompleted = true) {
+      let cumulativeRequired = 0;
+      for (let tier of SPIRIT_LEVEL_SYSTEM.tiers) {
+        const tierTotal = tier.levels * tier.spiritPowerPerLevel;
+        const tierEnd = cumulativeRequired + tierTotal;
+        if (totalSpiritPower <= tierEnd) {
+          const remainingInTier = totalSpiritPower - cumulativeRequired;
+          let levelInTier = Math.floor(remainingInTier / tier.spiritPowerPerLevel) + 1;
+          levelInTier = Math.min(levelInTier, tier.levels);
+          if (totalSpiritPower === tierEnd) {
+            const globalLevel = (tier.id - 1) * 10 + tier.levels;
+            const isMaxTier = tier.id < SPIRIT_LEVEL_SYSTEM.tiers.length;
+            const needsBreakthrough = isMaxTier && !breakthroughCompleted;
+            return {
+              tier: tier.name, tierId: tier.id, level: globalLevel, levelInTier: tier.levels,
+              currentSpiritPower: tierTotal, requiredForLevel: tier.spiritPowerPerLevel,
+              progress: 100, isMaxLevel: true,
+              needsBreakthrough: needsBreakthrough,
+              nextTier: needsBreakthrough ? SPIRIT_LEVEL_SYSTEM.tiers[tier.id] : null
+            };
+          }
+          const globalLevel = (tier.id - 1) * 10 + levelInTier;
+          const spiritPowerForCurrentLevel = (levelInTier - 1) * tier.spiritPowerPerLevel;
+          const progressInCurrentLevel = remainingInTier - spiritPowerForCurrentLevel;
+          const isMaxLevel = levelInTier >= tier.levels;
+          const needsBreakthrough = isMaxLevel && !breakthroughCompleted && tier.id < SPIRIT_LEVEL_SYSTEM.tiers.length;
+          return {
+            tier: tier.name, tierId: tier.id, level: globalLevel, levelInTier: levelInTier,
+            currentSpiritPower: needsBreakthrough ? tierTotal : progressInCurrentLevel,
+            requiredForLevel: tier.spiritPowerPerLevel,
+            progress: needsBreakthrough ? 100 : (progressInCurrentLevel / tier.spiritPowerPerLevel) * 100,
+            isMaxLevel: isMaxLevel, needsBreakthrough: needsBreakthrough,
+            nextTier: needsBreakthrough ? SPIRIT_LEVEL_SYSTEM.tiers[tier.id] : null
+          };
+        }
+        if (breakthroughCompleted) {
+          cumulativeRequired += tierTotal;
+        } else {
+          const globalLevel = (tier.id - 1) * 10 + tier.levels;
+          return {
+            tier: tier.name, tierId: tier.id, level: globalLevel, levelInTier: tier.levels,
+            currentSpiritPower: tierTotal, requiredForLevel: tier.spiritPowerPerLevel,
+            progress: 100, isMaxLevel: true, needsBreakthrough: true,
+            nextTier: SPIRIT_LEVEL_SYSTEM.tiers[tier.id] || null
+          };
+        }
+      }
+      const lastTier = SPIRIT_LEVEL_SYSTEM.tiers[SPIRIT_LEVEL_SYSTEM.tiers.length - 1];
+      return { tier: lastTier.name, tierId: lastTier.id, level: 100, levelInTier: 10, progress: 100, needsBreakthrough: false };
+    }
+
+    async function getSpiritPowerProfile(playerName) {
+      const profile = await db.playerProfiles.where('playerName').equals(playerName).first();
+      if (!profile) return null;
+      let spiritProfile = await db.playerSpiritPower.where('playerId').equals(profile.id).first();
+      if (!spiritProfile) {
+        const levelInfo = calculateSpiritLevel(profile.totalPoints || 0, true);
+        spiritProfile = {
+          playerId: profile.id, totalSpiritPower: profile.totalPoints || 0,
+          currentTier: levelInfo.tier, currentLevel: levelInfo.level,
+          isBreakthroughReady: false, breakthroughCompleted: true, lastUpdated: Date.now()
+        };
+        await db.playerSpiritPower.add(spiritProfile);
+      } else {
+        if (spiritProfile.totalSpiritPower !== (profile.totalPoints || 0)) {
+          const levelInfo = calculateSpiritLevel(profile.totalPoints || 0, spiritProfile.breakthroughCompleted);
+          await db.playerSpiritPower.update(spiritProfile.id, {
+            totalSpiritPower: profile.totalPoints || 0, currentTier: levelInfo.tier,
+            currentLevel: levelInfo.level, isBreakthroughReady: levelInfo.needsBreakthrough, lastUpdated: Date.now()
+          });
+          spiritProfile.totalSpiritPower = profile.totalPoints || 0;
+          spiritProfile.currentTier = levelInfo.tier;
+          spiritProfile.currentLevel = levelInfo.level;
+          spiritProfile.isBreakthroughReady = levelInfo.needsBreakthrough;
+        }
+      }
+      return spiritProfile;
+    }
+
+    function getTierEndSpiritPower(tierId) {
+      let cumulative = 0;
+      for (let tier of SPIRIT_LEVEL_SYSTEM.tiers) {
+        const tierTotal = tier.levels * tier.spiritPowerPerLevel;
+        if (tier.id === tierId) {
+          return cumulative + tierTotal;
+        }
+        cumulative += tierTotal;
+      }
+      return cumulative;
+    }
+
+    async function addSpiritPower(playerName, spiritPower, source = 'practice') {
+      const profile = await db.playerProfiles.where('playerName').equals(playerName).first();
+      if (!profile) return null;
+      let spiritProfile = await getSpiritPowerProfile(playerName);
+      const oldLevel = calculateSpiritLevel(spiritProfile.totalSpiritPower, spiritProfile.breakthroughCompleted);
+      const accurateBasePower = profile.totalPoints || 0;
+      const newTotal = accurateBasePower + spiritPower;
+      await db.playerProfiles.update(profile.id, { totalPoints: newTotal, lastPlayedAt: Date.now() });
+      let newBreakthroughCompleted = spiritProfile.breakthroughCompleted;
+      if (spiritProfile.breakthroughCompleted) {
+        const currentLevelInfo = calculateSpiritLevel(accurateBasePower, true);
+        const newLevelInfo = calculateSpiritLevel(newTotal, true);
+        const crossedTierBoundary = newLevelInfo.tierId > currentLevelInfo.tierId;
+        const reachedMaxLevel = newLevelInfo.isMaxLevel && newTotal >= getTierEndSpiritPower(currentLevelInfo.tierId);
+        if (crossedTierBoundary || reachedMaxLevel) {
+          newBreakthroughCompleted = false;
+        }
+      }
+      const newLevel = calculateSpiritLevel(newTotal, newBreakthroughCompleted);
+      await db.playerSpiritPower.update(spiritProfile.id, {
+        totalSpiritPower: newTotal, currentTier: newLevel.tier, currentLevel: newLevel.level,
+        isBreakthroughReady: newLevel.needsBreakthrough, breakthroughCompleted: newBreakthroughCompleted, lastUpdated: Date.now()
+      });
+      spiritProfile.totalSpiritPower = newTotal;
+      spiritProfile.currentTier = newLevel.tier;
+      spiritProfile.currentLevel = newLevel.level;
+      spiritProfile.isBreakthroughReady = newLevel.needsBreakthrough;
+      spiritProfile.breakthroughCompleted = newBreakthroughCompleted;
+      const leveledUp = newLevel.level > oldLevel.level;
+      return { profile: spiritProfile, oldLevel: oldLevel, newLevel: newLevel, leveledUp: leveledUp, spiritPowerAdded: spiritPower };
+    }
+
+    async function completeBreakthrough(playerName) {
+      const profile = await db.playerProfiles.where('playerName').equals(playerName).first();
+      if (!profile) return false;
+      const spiritProfile = await db.playerSpiritPower.where('playerId').equals(profile.id).first();
+      if (!spiritProfile) return false;
+      await db.playerSpiritPower.update(spiritProfile.id, { breakthroughCompleted: true, lastUpdated: Date.now() });
+      return true;
+    }
+
+    async function createTestPlayer() {
+      await initDB();
+      const existing = await db.playerProfiles.where('playerName').equals('test').first();
+      if (existing) {
+        log('test 角色已存在，总魂力: ' + existing.totalPoints, 'info');
+        await showStatus();
+        return;
+      }
+      const profile = { playerName: 'test', totalPoints: 0, level: 1, lastPlayedAt: Date.now() };
+      const id = await db.playerProfiles.add(profile);
+      profile.id = id;
+      const levelInfo = calculateSpiritLevel(0, true);
+      const spiritProfile = {
+        playerId: id, totalSpiritPower: 0, currentTier: levelInfo.tier,
+        currentLevel: levelInfo.level, isBreakthroughReady: false,
+        breakthroughCompleted: true, lastUpdated: Date.now()
+      };
+      await db.playerSpiritPower.add(spiritProfile);
+      log('创建 test 角色成功！初始魂力: 0', 'success');
+      await showStatus();
+    }
+
+    async function addSpiritPowerTest(amount) {
+      const result = await addSpiritPower('test', amount, 'test');
+      if (result) {
+        const msg = `增加 ${amount} 魂力: ${result.oldLevel.tier} Lv.${result.oldLevel.level} → ${result.newLevel.tier} Lv.${result.newLevel.level}` +
+          ` | 总魂力: ${result.profile.totalSpiritPower}` +
+          ` | 突破状态: ${result.newLevel.needsBreakthrough ? '需要突破!' : '无需突破'}`;
+        log(msg, result.newLevel.needsBreakthrough ? 'error' : 'success');
+        if (result.newLevel.needsBreakthrough) {
+          log(`⚠️ 已达到 ${result.newLevel.tier} 满级！需要完成突破任务才能升级到 ${result.newLevel.nextTier ? result.newLevel.nextTier.name : '下一级'}`, 'error');
+        }
+      } else {
+        log('增加魂力失败，角色可能不存在', 'error');
+      }
+      await showStatus();
+    }
+
+    async function completeBreakthroughTest() {
+      const result = await completeBreakthrough('test');
+      if (result) {
+        log('突破任务完成！现在可以正常升级了', 'success');
+      } else {
+        log('突破失败', 'error');
+      }
+      await showStatus();
+    }
+
+    async function showStatus() {
+      const profile = await db.playerProfiles.where('playerName').equals('test').first();
+      const statusEl = document.getElementById('status');
+      if (!profile) {
+        statusEl.innerHTML = '<p>test 角色不存在</p>';
+        return;
+      }
+      const spiritProfile = await db.playerSpiritPower.where('playerId').equals(profile.id).first();
+      if (!spiritProfile) {
+        statusEl.innerHTML = '<p>魂力档案不存在</p>';
+        return;
+      }
+      const levelInfo = calculateSpiritLevel(spiritProfile.totalSpiritPower, spiritProfile.breakthroughCompleted);
+      let html = `<table>
+        <tr><th>属性</th><th>值</th></tr>
+        <tr><td>角色名</td><td>${profile.playerName}</td></tr>
+        <tr><td>总魂力</td><td>${profile.totalPoints}</td></tr>
+        <tr><td>当前大级</td><td>${levelInfo.tier}</td></tr>
+        <tr><td>当前等级</td><td>Lv.${levelInfo.level}</td></tr>
+        <tr><td>大级内等级</td><td>Lv.${levelInfo.levelInTier}/10</td></tr>
+        <tr><td>是否满级</td><td>${levelInfo.isMaxLevel ? '是' : '否'}</td></tr>
+        <tr><td>需要突破</td><td style="color:${levelInfo.needsBreakthrough ? 'red' : 'green'}">${levelInfo.needsBreakthrough ? '⚠️ 需要突破！' : '否'}</td></tr>
+        <tr><td>突破完成</td><td>${spiritProfile.breakthroughCompleted ? '是' : '否'}</td></tr>
+        <tr><td>当前进度</td><td>${levelInfo.progress.toFixed(1)}%</td></tr>
+      </table>`;
+      if (levelInfo.needsBreakthrough && levelInfo.nextTier) {
+        html += `<p style="color:red; font-weight:bold;">⚠️ 需要完成突破任务才能晋升到 ${levelInfo.nextTier.name}！</p>`;
+      }
+      statusEl.innerHTML = html;
+    }
+
+    async function clearData() {
+      await initDB();
+      await db.playerProfiles.clear();
+      await db.playerSpiritPower.clear();
+      await db.practiceScores.clear();
+      log('所有数据已清除', 'success');
+      document.getElementById('status').innerHTML = '<p>数据已清除</p>';
+    }
+
+    // 页面加载时初始化
+    window.onload = async () => {
+      await initDB();
+      log('测试页面已加载，点击按钮开始测试', 'success');
+    };
+  </script>
+</body>
+</html>

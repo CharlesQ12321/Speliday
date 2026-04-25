@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>诊断突破状态</title>
+  <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; max-width: 1000px; margin: 0 auto; }
+    h1 { color: #333; }
+    .section { background: #f5f5f5; padding: 15px; margin: 15px 0; border-radius: 8px; }
+    button { padding: 10px 20px; margin: 5px; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; }
+    button:hover { background: #e0e0e0; }
+    .log { background: #222; color: #0f0; padding: 10px; border-radius: 4px; font-family: monospace; white-space: pre-wrap; max-height: 400px; overflow-y: auto; }
+    .error { color: #f66; }
+    .success { color: #6f6; }
+    .info { color: #ff6; }
+    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background: #4CAF50; color: white; }
+    td.error-cell { background: #ffe0e0; }
+    td.success-cell { background: #e0ffe0; }
+  </style>
+</head>
+<body>
+  <h1>诊断并修复突破状态</h1>
+
+  <div class="section">
+    <h2>操作按钮</h2>
+    <button onclick="diagnoseAll()">🔍 诊断所有角色</button>
+    <button onclick="fixAll()">🔧 修复所有错误状态</button>
+    <button onclick="clearAll()">🗑️ 清除所有数据</button>
+  </div>
+
+  <div class="section">
+    <h2>诊断结果</h2>
+    <div id="result"></div>
+  </div>
+
+  <div class="section">
+    <h2>日志</h2>
+    <div id="log" class="log"></div>
+  </div>
+
+  <script>
+    let db;
+
+    function log(msg, type = 'info') {
+      const logEl = document.getElementById('log');
+      const time = new Date().toLocaleTimeString();
+      const className = type === 'error' ? 'error' : type === 'success' ? 'success' : 'info';
+      logEl.innerHTML += `<span class="${className}">[${time}] ${msg}</span>\n`;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    async function initDB() {
+      db = new Dexie('SnapWordsDB');
+      db.version(12).stores({
+        words: '++id, word, translation, *bookIds, errorCount, correctCount, isReported, createdAt, lastPracticed',
+        books: '++id, bookId, bookName, createdAt',
+        settings: 'key, value',
+        practiceScores: '++id, playerName, totalScore, wordCount, correctCount, createdAt',
+        dailyPracticeSessions: '++id, date, completedAt',
+        playerProfiles: '++id, playerName, totalPoints, level, lastPlayedAt, avatar',
+        playerSpiritPower: '++id, playerId, totalSpiritPower, currentTier, currentLevel, lastUpdated, isBreakthroughReady, breakthroughCompleted',
+        dailyTasks: '++id, playerId, date, taskType, completed, reward',
+        dungeonProgress: '++id, playerId, dungeonId, isBreakthrough, completedCount, lastPlayed'
+      });
+      log('数据库初始化完成', 'success');
+    }
+
+    async function diagnoseAll() {
+      await initDB();
+      const profiles = await db.playerProfiles.toArray();
+      
+      let html = '<table><tr><th>角色名</th><th>总魂力</th><th>数据库 breakthroughCompleted</th><th>实际是否满级</th><th>状态</th><th>建议</th></tr>';
+      
+      for (const profile of profiles) {
+        const spirit = await db.playerSpiritPower.where('playerId').equals(profile.id).first();
+        if (!spirit) {
+          html += `<tr><td>${profile.playerName}</td><td>${profile.totalPoints}</td><td colspan="4">无魂力记录</td></tr>`;
+          continue;
+        }
+        
+        // 计算实际等级（假设已突破）
+        const actualLevel = calculateSpiritLevel(profile.totalPoints || 0, true);
+        const isMaxLevel = actualLevel.isMaxLevel;
+        
+        // 判断数据库中存储的突破状态是否正确
+        let status = '✅ 正确';
+        let suggestion = '无需操作';
+        let statusClass = 'success-cell';
+        
+        if (spirit.breakthroughCompleted === false && !isMaxLevel) {
+          status = '❌ 错误';
+          suggestion = '应设为 true（未满级不应需要突破）';
+          statusClass = 'error-cell';
+        } else if (spirit.breakthroughCompleted === true && isMaxLevel) {
+          status = '⚠️ 可能错误';
+          suggestion = '应设为 false（已满级应需要突破）';
+          statusClass = 'error-cell';
+        }
+        
+        html += `<tr>
+          <td>${profile.playerName}</td>
+          <td>${profile.totalPoints}</td>
+          <td>${spirit.breakthroughCompleted}</td>
+          <td>${isMaxLevel ? '是' : '否'}</td>
+          <td class="${statusClass}">${status}</td>
+          <td>${suggestion}</td>
+        </tr>`;
+      }
+      
+      html += '</table>';
+      document.getElementById('result').innerHTML = html;
+      
+      log(`诊断完成，共检查 ${profiles.length} 个角色`, 'success');
+    }
+
+    async function fixAll() {
+      await initDB();
+      const profiles = await db.playerProfiles.toArray();
+      let fixedCount = 0;
+      
+      for (const profile of profiles) {
+        let spirit = await db.playerSpiritPower.where('playerId').equals(profile.id).first();
+        if (!spirit) {
+          // 创建魂力记录
+          const levelInfo = calculateSpiritLevel(profile.totalPoints || 0, true);
+          spirit = {
+            playerId: profile.id,
+            totalSpiritPower: profile.totalPoints || 0,
+            currentTier: levelInfo.tier,
+            currentLevel: levelInfo.level,
+            isBreakthroughReady: levelInfo.needsBreakthrough,
+            breakthroughCompleted: !levelInfo.needsBreakthrough,
+            lastUpdated: Date.now()
+          };
+          await db.playerSpiritPower.add(spirit);
+          fixedCount++;
+          log(`创建 ${profile.playerName} 的魂力记录`, 'info');
+          continue;
+        }
+        
+        // 计算实际等级（假设已突破）
+        const actualLevel = calculateSpiritLevel(profile.totalPoints || 0, true);
+        const isMaxLevel = actualLevel.isMaxLevel;
+        
+        // 修正 breakthroughCompleted
+        let correctBreakthroughCompleted;
+        if (isMaxLevel) {
+          // 达到满级，应该是 false（需要突破）
+          correctBreakthroughCompleted = false;
+        } else {
+          // 未达到满级，应该是 true（不需要突破）
+          correctBreakthroughCompleted = true;
+        }
+        
+        if (spirit.breakthroughCompleted !== correctBreakthroughCompleted) {
+          await db.playerSpiritPower.update(spirit.id, {
+            breakthroughCompleted: correctBreakthroughCompleted,
+            isBreakthroughReady: actualLevel.needsBreakthrough,
+            currentTier: actualLevel.tier,
+            currentLevel: actualLevel.level,
+            lastUpdated: Date.now()
+          });
+          fixedCount++;
+          log(`修复 ${profile.playerName}：breakthroughCompleted ${spirit.breakthroughCompleted} -> ${correctBreakthroughCompleted}`, 'success');
+        }
+      }
+      
+      log(`修复完成，共修复 ${fixedCount} 个角色`, 'success');
+      await diagnoseAll();
+    }
+
+    async function clearAll() {
+      await initDB();
+      await db.playerProfiles.clear();
+      await db.playerSpiritPower.clear();
+      await db.dailyTasks.clear();
+      log('已清除所有数据', 'success');
+      document.getElementById('result').innerHTML = '';
+    }
+
+    function calculateSpiritLevel(totalSpiritPower, breakthroughCompleted = true) {
+      const SPIRIT_LEVEL_SYSTEM = {
+        tiers: [
+          { id: 1, name: '魂士', icon: '🌱', color: '#8B4513', levels: 10, spiritPowerPerLevel: 100 },
+          { id: 2, name: '魂师', icon: '⚔️', color: '#4169E1', levels: 10, spiritPowerPerLevel: 300 },
+          { id: 3, name: '大魂师', icon: '🛡️', color: '#32CD32', levels: 10, spiritPowerPerLevel: 800 }
+        ]
+      };
+      
+      let cumulativeRequired = 0;
+      
+      for (let tier of SPIRIT_LEVEL_SYSTEM.tiers) {
+        const tierTotal = tier.levels * tier.spiritPowerPerLevel;
+        const tierEnd = cumulativeRequired + tierTotal;
+        
+        if (totalSpiritPower <= tierEnd) {
+          const remainingInTier = totalSpiritPower - cumulativeRequired;
+          let levelInTier = Math.floor(remainingInTier / tier.spiritPowerPerLevel) + 1;
+          levelInTier = Math.min(levelInTier, tier.levels);
+          
+          const globalLevel = (tier.id - 1) * 10 + levelInTier;
+          const spiritPowerForCurrentLevel = (levelInTier - 1) * tier.spiritPowerPerLevel;
+          const progressInCurrentLevel = remainingInTier - spiritPowerForCurrentLevel;
+          
+          const isMaxLevel = levelInTier >= tier.levels;
+          const needsBreakthrough = isMaxLevel && !breakthroughCompleted && tier.id < SPIRIT_LEVEL_SYSTEM.tiers.length;
+          
+          return {
+            tier: tier.name,
+            tierId: tier.id,
+            level: globalLevel,
+            levelInTier: levelInTier,
+            currentSpiritPower: needsBreakthrough ? tierTotal : progressInCurrentLevel,
+            requiredForLevel: tier.spiritPowerPerLevel,
+            progress: needsBreakthrough ? 100 : (progressInCurrentLevel / tier.spiritPowerPerLevel) * 100,
+            isMaxLevel: isMaxLevel,
+            needsBreakthrough: needsBreakthrough
+          };
+        }
+        
+        if (breakthroughCompleted) {
+          cumulativeRequired += tierTotal;
+        } else {
+          const globalLevel = (tier.id - 1) * 10 + tier.levels;
+          return {
+            tier: tier.name,
+            tierId: tier.id,
+            level: globalLevel,
+            levelInTier: tier.levels,
+            currentSpiritPower: tierTotal,
+            requiredForLevel: tier.spiritPowerPerLevel,
+            progress: 100,
+            isMaxLevel: true,
+            needsBreakthrough: true
+          };
+        }
+      }
+      
+      const lastTier = SPIRIT_LEVEL_SYSTEM.tiers[SPIRIT_LEVEL_SYSTEM.tiers.length - 1];
+      return { tier: lastTier.name, tierId: lastTier.id, level: 100, levelInTier: 10, progress: 100, isMaxLevel: true, needsBreakthrough: false };
+    }
+
+    window.onload = async () => {
+      await initDB();
+      log('诊断页面已加载', 'success');
+      await diagnoseAll();
+    };
+  </script>
+</body>
+</html>
