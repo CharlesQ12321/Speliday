@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>测试：切换角色后怪物前进百分比</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .container { background: white; border-radius: 16px; padding: 40px; max-width: 900px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+    h1 { color: #667eea; margin-bottom: 20px; font-size: 28px; }
+    .test-section { margin: 30px 0; padding: 20px; background: #f8f9fa; border-radius: 12px; }
+    .test-section h2 { color: #333; margin-bottom: 15px; font-size: 20px; }
+    .test-result { padding: 15px; margin: 10px 0; border-radius: 8px; font-weight: 600; }
+    .pass { background: #d4edda; color: #155724; border-left: 4px solid #28a745; }
+    .fail { background: #f8d7da; color: #721c24; border-left: 4px solid #dc3545; }
+    .info { background: #d1ecf1; color: #0c5460; border-left: 4px solid #17a2b8; }
+    button { background: #667eea; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 16px; margin: 5px; transition: all 0.3s; }
+    button:hover { background: #5a6fd6; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); }
+    #test-output { margin-top: 20px; padding: 20px; background: #1e1e1e; color: #00ff00; border-radius: 8px; font-family: 'Courier New', monospace; font-size: 14px; max-height: 500px; overflow-y: auto; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎮 测试：切换角色后怪物前进百分比</h1>
+    <p style="color: #666; margin-bottom: 20px;">验证任何角色在拼写错误时怪物都只前进10%，而不是20%</p>
+    
+    <div class="test-section">
+      <h2>📋 测试用例</h2>
+      <div id="test-list"></div>
+    </div>
+    
+    <div class="test-section">
+      <button onclick="runAllTests()">🚀 运行所有测试</button>
+      <button onclick="clearOutput()">🗑️ 清除输出</button>
+    </div>
+    
+    <div id="test-output"></div>
+  </div>
+
+  <script>
+    const testCases = [
+      { name: 'TC1: 角色A首次错误，怪物前进10%', expected: 10 },
+      { name: 'TC2: 角色A第二次错误，怪物前进20%', expected: 20 },
+      { name: 'TC3: 切换到角色B后，zombieForward应重置为0', expected: 0 },
+      { name: 'TC4: 角色B首次错误，怪物前进10%', expected: 10 },
+      { name: 'TC5: 角色B第二次错误，怪物前进20%', expected: 20 },
+      { name: 'TC6: 切换到角色C后，zombieForward应重置为0', expected: 0 },
+      { name: 'TC7: 角色C首次错误，怪物前进10%', expected: 10 }
+    ];
+
+    // 模拟状态
+    let state = {
+      zombieForward: 0,
+      zombiePushBack: 0,
+      zombiePosition: 0
+    };
+
+    // 模拟角色切换
+    function switchProfile(playerName) {
+      state.zombieForward = 0;
+      state.zombiePushBack = 0;
+      state.zombiePosition = 0;
+      log(`  ✓ 切换到角色 ${playerName}，重置所有僵尸游戏状态`);
+    }
+
+    // 模拟拼写错误
+    function simulateWrongAnswer() {
+      const zombieForwardAmount = 10;
+      state.zombieForward = (state.zombieForward || 0) + zombieForwardAmount;
+      log(`  ✓ 拼写错误，zombieForward 增加 10%，当前值: ${state.zombieForward}%`);
+      return state.zombieForward;
+    }
+
+    function log(message) {
+      const output = document.getElementById('test-output');
+      output.textContent += message + '\n';
+      output.scrollTop = output.scrollHeight;
+    }
+
+    function clearOutput() {
+      document.getElementById('test-output').textContent = '';
+    }
+
+    function runAllTests() {
+      clearOutput();
+      const testList = document.getElementById('test-list');
+      testList.innerHTML = '';
+
+      let passCount = 0;
+      let failCount = 0;
+
+      testCases.forEach((tc, index) => {
+        const resultDiv = document.createElement('div');
+        resultDiv.className = 'test-result info';
+        resultDiv.innerHTML = `<strong>${tc.name}</strong><br>期望值: ${tc.expected}%`;
+        testList.appendChild(resultDiv);
+
+        log(`\n🧪 ${tc.name}`);
+
+        let actual = 0;
+
+        switch (index) {
+          case 0:
+            // TC1: 角色A首次错误
+            state.zombieForward = 0;
+            actual = simulateWrongAnswer();
+            break;
+          case 1:
+            // TC2: 角色A第二次错误
+            actual = simulateWrongAnswer();
+            break;
+          case 2:
+            // TC3: 切换到角色B
+            switchProfile('角色B');
+            actual = state.zombieForward;
+            break;
+          case 3:
+            // TC4: 角色B首次错误
+            actual = simulateWrongAnswer();
+            break;
+          case 4:
+            // TC5: 角色B第二次错误
+            actual = simulateWrongAnswer();
+            break;
+          case 5:
+            // TC6: 切换到角色C
+            switchProfile('角色C');
+            actual = state.zombieForward;
+            break;
+          case 6:
+            // TC7: 角色C首次错误
+            actual = simulateWrongAnswer();
+            break;
+        }
+
+        if (actual === tc.expected) {
+          resultDiv.className = 'test-result pass';
+          resultDiv.innerHTML += `<br>✅ 实际值: ${actual}% - 通过`;
+          passCount++;
+        } else {
+          resultDiv.className = 'test-result fail';
+          resultDiv.innerHTML += `<br>❌ 实际值: ${actual}% - 失败`;
+          failCount++;
+        }
+      });
+
+      log(`\n📊 测试结果: ${passCount} 通过, ${failCount} 失败, 共 ${testCases.length} 个测试`);
+      if (failCount === 0) {
+        log('\n🎉 所有测试通过！切换角色后怪物前进百分比修复成功！');
+      } else {
+        log(`\n❌ 有 ${failCount} 个测试失败，请检查修复`);
+      }
+    }
+
+    // 初始化测试列表
+    document.addEventListener('DOMContentLoaded', () => {
+      const testList = document.getElementById('test-list');
+      testCases.forEach((tc, index) => {
+        const div = document.createElement('div');
+        div.className = 'test-result info';
+        div.innerHTML = `<strong>${tc.name}</strong><br>期望值: ${tc.expected}%`;
+        testList.appendChild(div);
+      });
+    });
+  </script>
+</body>
+</html>

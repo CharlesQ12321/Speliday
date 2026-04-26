@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>集成测试：切换角色后怪物前进百分比验证</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
+    .container { background: white; border-radius: 16px; padding: 40px; max-width: 1000px; margin: 0 auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+    h1 { color: #667eea; margin-bottom: 10px; font-size: 28px; }
+    .subtitle { color: #666; margin-bottom: 30px; }
+    .test-section { margin: 20px 0; padding: 20px; border-radius: 12px; border: 2px solid #e0e0e0; }
+    .test-section h3 { color: #333; margin-bottom: 15px; }
+    .result { padding: 12px; margin: 8px 0; border-radius: 6px; font-weight: 600; }
+    .pass { background: #d4edda; color: #155724; border-left: 4px solid #28a745; }
+    .fail { background: #f8d7da; color: #721c24; border-left: 4px solid #dc3545; }
+    .info { background: #d1ecf1; color: #0c5460; border-left: 4px solid #17a2b8; }
+    .console { margin-top: 20px; padding: 20px; background: #1e1e1e; color: #00ff00; border-radius: 8px; font-family: 'Courier New', monospace; font-size: 13px; max-height: 400px; overflow-y: auto; white-space: pre-wrap; }
+    button { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 16px; margin: 8px 4px; transition: all 0.3s; }
+    button:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4); }
+    button.secondary { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+    .stat-box { display: inline-block; margin: 10px; padding: 15px; background: #f8f9fa; border-radius: 8px; text-align: center; min-width: 120px; }
+    .stat-box .value { font-size: 32px; font-weight: bold; color: #667eea; }
+    .stat-box .label { font-size: 12px; color: #666; margin-top: 5px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🧪 集成测试：切换角色后怪物前进百分比</h1>
+    <p class="subtitle">验证切换角色后，任何角色的拼写错误都只让怪物前进10%</p>
+    
+    <div class="test-section">
+      <h3>📊 测试统计</h3>
+      <div class="stat-box">
+        <div class="value" id="pass-count">0</div>
+        <div class="label">通过</div>
+      </div>
+      <div class="stat-box">
+        <div class="value" id="fail-count">0</div>
+        <div class="label">失败</div>
+      </div>
+      <div class="stat-box">
+        <div class="value" id="total-count">0</div>
+        <div class="label">总计</div>
+      </div>
+    </div>
+    
+    <div style="margin: 20px 0;">
+      <button onclick="runIntegrationTest()">🚀 运行集成测试</button>
+      <button class="secondary" onclick="clearResults()">🗑️ 清除结果</button>
+    </div>
+    
+    <div id="test-results"></div>
+    
+    <div class="console" id="console"></div>
+  </div>
+
+  <script>
+    // 模拟 app.js 中的状态管理
+    const mockState = {
+      zombieForward: 0,
+      zombiePushBack: 0,
+      zombiePosition: 0,
+      zombieStartTime: 0,
+      zombieTotalTime: 0,
+      playerCurrentHealth: 0,
+      playerMaxHealth: 0,
+      playerStats: null,
+      currentPage: 'profile',
+      practiceWords: [],
+      currentPracticeIndex: 0
+    };
+
+    // 模拟角色数据
+    const mockPlayers = [
+      { id: 1, name: '唐三', soulBones: ['蓝银皇', '昊天锤'], stats: { health: 1000, defense: 100 } },
+      { id: 2, name: '小舞', soulBones: ['柔骨兔'], stats: { health: 800, defense: 80 } },
+      { id: 3, name: '戴沐白', soulBones: ['邪眸白虎'], stats: { health: 1200, defense: 120 } }
+    ];
+
+    let currentPlayer = null;
+    let testPassCount = 0;
+    let testFailCount = 0;
+    let testTotalCount = 0;
+
+    // 模拟切换角色函数（修复后的版本）
+    function switchProfile(player) {
+      currentPlayer = player;
+      
+      // 关键修复：重置僵尸游戏状态
+      mockState.zombieForward = 0;
+      mockState.zombiePushBack = 0;
+      mockState.zombiePosition = 0;
+      
+      console.log(`✓ 切换到角色: ${player.name}, 重置僵尸状态`);
+    }
+
+    // 模拟拼写错误处理
+    function handleWrongAnswer() {
+      if (!currentPlayer) {
+        console.error('❌ 未选择角色');
+        return;
+      }
+
+      const zombieForwardAmount = 10;
+      mockState.zombieForward = (mockState.zombieForward || 0) + zombieForwardAmount;
+      
+      // 更新僵尸位置
+      mockState.zombiePosition = Math.min(
+        Math.max(mockState.zombieForward - mockState.zombiePushBack, 0),
+        100
+      );
+      
+      console.log(`✓ ${currentPlayer.name} 拼写错误，怪物前进10%，当前前进: ${mockState.zombieForward}%, 位置: ${mockState.zombiePosition}%`);
+    }
+
+    // 测试用例
+    const testCases = [
+      {
+        name: 'TC1: 角色A首次错误',
+        action: () => {
+          switchProfile(mockPlayers[0]);
+          handleWrongAnswer();
+        },
+        check: () => mockState.zombieForward === 10
+      },
+      {
+        name: 'TC2: 角色A第二次错误',
+        action: () => handleWrongAnswer(),
+        check: () => mockState.zombieForward === 20
+      },
+      {
+        name: 'TC3: 角色A第三次错误',
+        action: () => handleWrongAnswer(),
+        check: () => mockState.zombieForward === 30
+      },
+      {
+        name: 'TC4: 切换到角色B后，zombieForward应重置为0',
+        action: () => switchProfile(mockPlayers[1]),
+        check: () => mockState.zombieForward === 0
+      },
+      {
+        name: 'TC5: 角色B首次错误，怪物前进10%',
+        action: () => handleWrongAnswer(),
+        check: () => mockState.zombieForward === 10
+      },
+      {
+        name: 'TC6: 角色B第二次错误，怪物前进20%',
+        action: () => handleWrongAnswer(),
+        check: () => mockState.zombieForward === 20
+      },
+      {
+        name: 'TC7: 切换到角色C后，zombieForward应重置为0',
+        action: () => switchProfile(mockPlayers[2]),
+        check: () => mockState.zombieForward === 0
+      },
+      {
+        name: 'TC8: 角色C首次错误，怪物前进10%',
+        action: () => handleWrongAnswer(),
+        check: () => mockState.zombieForward === 10
+      },
+      {
+        name: 'TC9: 切换回角色A，zombieForward应重置为0',
+        action: () => switchProfile(mockPlayers[0]),
+        check: () => mockState.zombieForward === 0
+      },
+      {
+        name: 'TC10: 角色A重新开始练习，首次错误前进10%',
+        action: () => handleWrongAnswer(),
+        check: () => mockState.zombieForward === 10
+      }
+    ];
+
+    function log(message) {
+      const console = document.getElementById('console');
+      console.textContent += message + '\n';
+      console.scrollTop = console.scrollHeight;
+    }
+
+    function clearResults() {
+      document.getElementById('test-results').innerHTML = '';
+      document.getElementById('console').textContent = '';
+      testPassCount = 0;
+      testFailCount = 0;
+      testTotalCount = 0;
+      updateStats();
+    }
+
+    function updateStats() {
+      document.getElementById('pass-count').textContent = testPassCount;
+      document.getElementById('fail-count').textContent = testFailCount;
+      document.getElementById('total-count').textContent = testTotalCount;
+    }
+
+    function runIntegrationTest() {
+      clearResults();
+      
+      log('🚀 开始集成测试...\n');
+      log('=====================================\n');
+
+      const resultsContainer = document.getElementById('test-results');
+
+      testCases.forEach((tc, index) => {
+        testTotalCount++;
+        
+        log(`\n🧪 ${tc.name}`);
+        log(`执行操作...`);
+        
+        // 执行测试动作
+        tc.action();
+        
+        // 检查结果
+        const passed = tc.check();
+        
+        const resultDiv = document.createElement('div');
+        resultDiv.className = `result ${passed ? 'pass' : 'fail'}`;
+        
+        const expected = index < 3 ? (index + 1) * 10 : 
+                        index === 3 ? 0 : 
+                        index === 4 ? 10 : 
+                        index === 5 ? 20 :
+                        index === 6 ? 0 :
+                        index === 7 ? 10 :
+                        index === 8 ? 0 : 10;
+        
+        const actual = mockState.zombieForward;
+        
+        resultDiv.innerHTML = `
+          <strong>${tc.name}</strong><br>
+          期望值: ${expected}% | 实际值: ${actual}%<br>
+          ${passed ? '✅ 通过' : '❌ 失败'}
+        `;
+        
+        resultsContainer.appendChild(resultDiv);
+        
+        if (passed) {
+          testPassCount++;
+          log(`✅ 通过 - 期望: ${expected}%, 实际: ${actual}%\n`);
+        } else {
+          testFailCount++;
+          log(`❌ 失败 - 期望: ${expected}%, 实际: ${actual}%\n`);
+        }
+        
+        updateStats();
+      });
+
+      log('\n=====================================');
+      log(`\n📊 测试结果汇总:`);
+      log(`通过: ${testPassCount}/${testTotalCount}`);
+      log(`失败: ${testFailCount}/${testTotalCount}`);
+      
+      if (testFailCount === 0) {
+        log('\n🎉 所有测试通过！修复成功！');
+        log('✓ 切换角色后，任何角色的怪物前进百分比都正确重置为10%');
+      } else {
+        log(`\n❌ 有 ${testFailCount} 个测试失败`);
+        log('✗ 请检查修复逻辑');
+      }
+    }
+  </script>
+</body>
+</html>

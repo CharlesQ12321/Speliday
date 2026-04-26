@@ -1024,6 +1024,7 @@ const state = {
   zombieForward: 0, // 累计答错前进的百分比
   extraLifeUsed: false, // 柔骨兔套装失败重生是否已使用
   playerStats: null, // 当前玩家属性缓存
+  isCheckingAnswer: false, // 防止重复提交的标志位
 };
 
 // 等级系统辅助函数
@@ -3969,18 +3970,35 @@ ${text}`;
   },
 
   async checkAnswer() {
+    // 防止并发调用：如果正在处理中，直接返回
+    if (state.isCheckingAnswer) {
+      return;
+    }
+    state.isCheckingAnswer = true;
+
     const input = document.getElementById('practice-input').value.trim().toLowerCase();
     const word = state.practiceWords[state.currentPracticeIndex];
     const feedback = document.getElementById('practice-feedback');
     const btn = document.getElementById('practice-check-btn');
+    const inputEl = document.getElementById('practice-input');
+
+    // 禁用按钮和输入框，防止重复提交
+    if (btn) btn.disabled = true;
+    if (inputEl) inputEl.disabled = true;
 
     if (!input) {
       this.showToast('请输入单词', 'error');
+      state.isCheckingAnswer = false;
+      if (btn) btn.disabled = false;
+      if (inputEl) inputEl.disabled = false;
       return;
     }
 
     // 防止重复提交：如果已经显示反馈，则不再处理
     if (feedback.classList.contains('show')) {
+      state.isCheckingAnswer = false;
+      if (btn) btn.disabled = false;
+      if (inputEl) inputEl.disabled = false;
       return;
     }
 
@@ -4017,6 +4035,9 @@ ${text}`;
         this.showPracticeCompleteModal();
       }, 1000);
       
+      state.isCheckingAnswer = false;
+      if (btn) btn.disabled = false;
+      if (inputEl) inputEl.disabled = false;
       return;
     }
 
@@ -4072,6 +4093,9 @@ ${text}`;
       }, 2000);
       
       await this.checkAndUpdateHighErrorStatus(word.id);
+      state.isCheckingAnswer = false;
+      if (btn) btn.disabled = false;
+      if (inputEl) inputEl.disabled = false;
       return;
     }
     
@@ -4149,8 +4173,8 @@ ${text}`;
         const zombieForwardAmount = 10; // 答错僵尸前进10%
         state.zombieForward = (state.zombieForward || 0) + zombieForwardAmount;
         
-        // 更新显示（updateZombiePosition 定时器会自动应用 zombieForward 计算位置）
-        this.updateZombieDisplay();
+        // 立即更新僵尸位置（而不是只更新显示）
+        this.updateZombiePosition();
         
         // 检查僵尸是否到达终点（100%）
         if (state.zombiePosition >= 100) {
@@ -4158,6 +4182,9 @@ ${text}`;
           setTimeout(() => {
             this.showPracticeFailed();
           }, 1500);
+          state.isCheckingAnswer = false;
+          if (btn) btn.disabled = false;
+          if (inputEl) inputEl.disabled = false;
           return;
         }
         
@@ -4200,6 +4227,9 @@ ${text}`;
                 this.showPracticeFailed();
               }, 1500);
             }, 1000);
+            state.isCheckingAnswer = false;
+            if (btn) btn.disabled = false;
+            if (inputEl) inputEl.disabled = false;
             return;
           }
         }
@@ -4255,8 +4285,8 @@ ${text}`;
       };
 
       // 更新输入框回车事件，直接跳转到下一题
-      const inputEl = document.getElementById('practice-input');
-      inputEl.onkeypress = (event) => {
+      const nextInputEl = document.getElementById('practice-input');
+      nextInputEl.onkeypress = (event) => {
         if (event.key === 'Enter') {
           event.preventDefault();
           state.currentPracticeIndex++;
@@ -4267,6 +4297,11 @@ ${text}`;
     
     // Check if should add to high error book
     await this.checkAndUpdateHighErrorStatus(word.id);
+    
+    // 重置状态标志
+    state.isCheckingAnswer = false;
+    if (btn) btn.disabled = false;
+    if (inputEl) inputEl.disabled = false;
   },
 
   // 检查并更新高频错词状态
@@ -5395,6 +5430,11 @@ ${text}`;
     await this.renderSoulBoneBonusStats(profile.id);
     await this.renderSoulBoneQuickView(profile.id);
     await this.renderPlayerBattleStats(profile.id);
+    
+    // 重置僵尸游戏状态（防止切换角色后残留上一个角色的进度）
+    state.zombieForward = 0;
+    state.zombiePushBack = 0;
+    state.zombiePosition = 0;
     
     // 更新角色选择器的高亮状态
     const selectorContainer = document.getElementById('profile-character-selector');
