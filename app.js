@@ -3410,7 +3410,7 @@ ${text}`;
 
   // 初始化僵尸游戏（阶段六：任务 6.3）
   async initZombieGame(wordCount) {
-    const baseTime = wordCount * 15;
+    const baseTime = wordCount * 7.5; // 每个单词 7.5 秒（原为 15 秒，速度提高1倍）
     const playerId = await this.getCurrentPlayerId();
     const playerStats = await calculatePlayerStats(playerId);
     
@@ -4161,50 +4161,58 @@ ${text}`;
           return;
         }
         
-        // 僵尸发动攻击，玩家受到伤害
-        this.playSpiderAttackAnimation(async () => {
-          // 计算伤害
-          const playerStats = state.playerStats || BASE_PLAYER_STATS;
-          const damageResult = onZombieAttack(playerStats);
-          
-          if (damageResult.dodged) {
+        // 僵尸发动攻击，立即显示伤害视觉效果
+        this.playSpiderAttackAnimation(() => {
+          // 动画结束后的回调（目前无需额外操作）
+        });
+        
+        // 立即计算伤害并显示减血效果
+        const playerStats = state.playerStats || BASE_PLAYER_STATS;
+        const damageResult = onZombieAttack(playerStats);
+        
+        if (damageResult.dodged) {
+          setTimeout(() => {
             this.showToast('💨 闪避成功！僵尸攻击被躲避', 'success');
             this.showDodgeAnimation();
-          } else {
-            // 玩家受到伤害
-            state.playerCurrentHealth = Math.max(0, state.playerCurrentHealth - damageResult.damage);
-            this.updatePlayerHealthDisplay();
-            
-            if (damageResult.damage > 0) {
+          }, 800);
+        } else {
+          // 玩家受到伤害 - 立即显示伤害数字
+          state.playerCurrentHealth = Math.max(0, state.playerCurrentHealth - damageResult.damage);
+          this.updatePlayerHealthDisplay();
+          
+          if (damageResult.damage > 0) {
+            this.showPlayerDamageAnimation(damageResult.damage);
+            setTimeout(() => {
               this.showToast(`💔 受到 ${damageResult.damage} 点伤害！剩余生命: ${Math.round(state.playerCurrentHealth)}/${Math.round(state.playerMaxHealth)}`, 'error');
-              this.showPlayerDamageAnimation(damageResult.damage);
-            } else {
+            }, 600);
+          } else {
+            setTimeout(() => {
               this.showToast('🛡️ 防御太高！僵尸攻击无效', 'success');
               this.showImmuneAnimation();
-            }
-            
-            // 检查是否生命值耗尽
-            if (state.playerCurrentHealth <= 0) {
-              setTimeout(() => {
-                this.showToast('💀 生命值耗尽！游戏结束', 'error');
-                setTimeout(() => {
-                  this.showPracticeFailed();
-                }, 1500);
-              }, 1000);
-              return;
-            }
+            }, 600);
           }
           
-          // 显示受伤反馈
-          feedback.innerHTML = `
-            <div>❌ 拼写错误</div>
-            <div class="correct-word">正确：${word.word}</div>
-            <div style="margin-top: 8px; font-size: 13px; color: #e74c3c;">
-              僵尸前进 + 攻击！
-              ${damageResult.dodged ? '闪避成功！' : `受到伤害: ${damageResult.damage}`}
-            </div>
-          `;
-        });
+          // 检查是否生命值耗尽
+          if (state.playerCurrentHealth <= 0) {
+            setTimeout(() => {
+              this.showToast('💀 生命值耗尽！游戏结束', 'error');
+              setTimeout(() => {
+                this.showPracticeFailed();
+              }, 1500);
+            }, 1000);
+            return;
+          }
+        }
+        
+        // 显示受伤反馈
+        feedback.innerHTML = `
+          <div>❌ 拼写错误</div>
+          <div class="correct-word">正确：${word.word}</div>
+          <div style="margin-top: 8px; font-size: 13px; color: #e74c3c;">
+            僵尸前进 + 攻击！
+            ${damageResult.dodged ? '闪避成功！' : `受到伤害: ${damageResult.damage}`}
+          </div>
+        `;
       } else {
         this.showToast('🐱 幽冥灵猫套装：僵尸未前进！', 'info');
         feedback.innerHTML = `
