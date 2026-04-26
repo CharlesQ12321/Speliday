@@ -819,20 +819,86 @@
       position: relative;
     }
 
+    /* 玩家角色指示器 - 类似僵尸指示器 */
+    .player-indicator {
+      position: relative;
+      margin-right: auto;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
     .character-img {
-      height: 160px;
+      height: 80px;
       width: auto;
       object-fit: contain;
     }
 
-    .character-left {
-      margin-right: auto;
-      transform: scale(0.5) translateX(-110px) translateY(90px);
+    /* 玩家生命值 - 在角色左侧，与蜘蛛进度同高度（左下角） */
+    .player-health-container {
+      position: absolute;
+      bottom: 0;
+      left: -50px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--error);
+      background: rgba(239, 68, 68, 0.15);
+      padding: 2px 6px;
+      border-radius: 4px;
+      white-space: nowrap;
+      z-index: 11;
     }
 
-    .character-right {
-      margin-left: auto;
-      transform: translateX(80px);
+    /* 玩家受伤动画 */
+    .player-hit {
+      animation: playerHitShake 0.5s ease-in-out;
+    }
+
+    @keyframes playerHitShake {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-8px); }
+      40% { transform: translateX(8px); }
+      60% { transform: translateX(-5px); }
+      80% { transform: translateX(5px); }
+    }
+
+    /* 答对/答错反馈提示 */
+    .feedback-text {
+      position: absolute;
+      left: 50%;
+      top: 20%;
+      transform: translateX(-50%);
+      font-size: 16px;
+      font-weight: 700;
+      padding: 6px 12px;
+      border-radius: 8px;
+      z-index: 100;
+      pointer-events: none;
+      animation: feedbackFade 1.5s ease-out forwards;
+      white-space: nowrap;
+    }
+
+    .feedback-correct {
+      color: #27ae60;
+      background: rgba(39, 174, 96, 0.2);
+      border: 1px solid rgba(39, 174, 96, 0.4);
+    }
+
+    .feedback-wrong {
+      color: #e74c3c;
+      background: rgba(231, 76, 60, 0.2);
+      border: 1px solid rgba(231, 76, 60, 0.4);
+    }
+
+    @keyframes feedbackFade {
+      0% {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+      100% {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-20px);
+      }
     }
 
     .bullets-container {
@@ -910,7 +976,7 @@
       position: absolute;
       right: 0;
       top: 50%;
-      transform: translateY(calc(-50% + 47px));
+      transform: translateY(calc(-50% + 7px));
       transition: right 0.5s ease-out;
     }
 
@@ -939,8 +1005,8 @@
     }
 
     @keyframes zombieAttack {
-      0%, 100% { transform: translateY(calc(-50% + 42px)) scale(1); }
-      50% { transform: translateY(calc(-50% + 42px)) scale(1.2); }
+      0%, 100% { transform: translateY(calc(-50% - 58px)) scale(1); }
+      50% { transform: translateY(calc(-50% - 58px)) scale(1.2); }
     }
 
     .practice-progress {
@@ -1248,6 +1314,12 @@
       0%, 100% { transform: translateX(0); }
       25% { transform: translateX(-10px); }
       75% { transform: translateX(10px); }
+    }
+
+    @keyframes damageFloat {
+      0% { opacity: 1; transform: translate(-50%, -50%) scale(0.5); }
+      50% { opacity: 1; transform: translate(-50%, -80%) scale(1.2); }
+      100% { opacity: 0; transform: translate(-50%, -150%) scale(1); }
     }
 
     /* 突破任务提醒动画 */
@@ -1826,7 +1898,12 @@
             </div>
             <!-- 豌豆和僵尸图片 -->
             <div class="practice-characters">
-              <img src="角色行走动作.gif" alt="角色" class="character-img character-left" id="character-image">
+              <!-- 玩家角色指示器 -->
+              <div class="player-indicator" id="player-indicator">
+                <!-- 玩家生命值显示（角色左侧，样式同僵尸进度） -->
+                <div class="player-health-container" id="player-health-container">1000 / 1000</div>
+                <img src="角色行走动作.gif" alt="角色" class="character-img" id="character-image">
+              </div>
               <div class="bullets-container" id="bullets-container">
                 <div class="bullet" id="bullet-0"></div>
                 <div class="bullet" id="bullet-1"></div>
@@ -2126,6 +2203,49 @@
           <div id="soul-bone-bonus-stats" style="display: flex; flex-wrap: wrap; gap: 8px;">
             <div style="text-align: center; padding: 20px; color: var(--text-muted); width: 100%;">
               装备魂骨后将显示属性加成
+            </div>
+          </div>
+        </div>
+
+        <!-- 玩家对战属性（阶段六：任务 6.5） -->
+        <div class="card">
+          <div class="card-title">
+            <i class="fa fa-shield" style="color: #3498db;"></i>
+            <span>对战属性</span>
+          </div>
+          <div id="player-battle-stats" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+            <div style="text-align: center; padding: 12px; background: rgba(231, 76, 60, 0.1); border-radius: 8px;">
+              <div style="font-size: 24px; font-weight: 700; color: #e74c3c;" id="stat-health">1000</div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">❤️ 生命值</div>
+            </div>
+            <div style="text-align: center; padding: 12px; background: rgba(46, 204, 113, 0.1); border-radius: 8px;">
+              <div style="font-size: 24px; font-weight: 700; color: #2ecc71;" id="stat-defense">0</div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">🛡️ 防御力</div>
+            </div>
+            <div style="text-align: center; padding: 12px; background: rgba(52, 152, 219, 0.1); border-radius: 8px;">
+              <div style="font-size: 24px; font-weight: 700; color: #3498db;" id="stat-dodge">0%</div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">💨 闪避率</div>
+            </div>
+            <div style="text-align: center; padding: 12px; background: rgba(230, 126, 34, 0.1); border-radius: 8px;">
+              <div style="font-size: 24px; font-weight: 700; color: #e67e22;" id="stat-knockback">100%</div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">💥 击退效果</div>
+            </div>
+            <div style="text-align: center; padding: 12px; background: rgba(155, 89, 182, 0.1); border-radius: 8px; grid-column: span 2;">
+              <div style="font-size: 24px; font-weight: 700; color: #9b59b6;" id="stat-slow">0%</div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">🐌 僵尸减速</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 套装效果说明（阶段六：任务 6.5） -->
+        <div class="card">
+          <div class="card-title">
+            <i class="fa fa-star" style="color: #f39c12;"></i>
+            <span>套装效果</span>
+          </div>
+          <div id="active-set-bonuses" style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="text-align: center; padding: 12px; color: var(--text-muted); font-size: 13px;">
+              集齐5件同种魂骨激活套装效果
             </div>
           </div>
         </div>

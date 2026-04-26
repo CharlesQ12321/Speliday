@@ -799,6 +799,94 @@ function getSetBonus(equippedBones) {
   return bonuses;
 }
 
+// ========== 阶段六：玩家属性与对战增益 ==========
+
+// 基础玩家属性配置（阶段六：任务 6.1）
+const BASE_PLAYER_STATS = {
+  health: 1000,       // 基础生命值
+  defense: 0,         // 基础防御力
+  dodge: 0,           // 基础闪避率（0-1，百分比）
+  knockback: 1,       // 基础击退倍率（1 = 100%）
+  zombieSlow: 0       // 僵尸减速效果（0-1，百分比）
+};
+
+// 计算玩家属性（阶段六：任务 6.1 & 6.2）
+async function calculatePlayerStats(playerId) {
+  let stats = { ...BASE_PLAYER_STATS };
+  
+  if (!playerId) {
+    console.warn('[calculatePlayerStats] playerId 为空，返回基础属性');
+    return stats;
+  }
+  
+  try {
+    const bones = await db.soulBones.where('playerId').equals(playerId).toArray();
+    console.log('[calculatePlayerStats] playerId:', playerId, '找到', bones.length, '个魂骨');
+    
+    // 只计算已装备且已鉴定的魂骨属性
+    const equippedBones = bones.filter(b => b.isEquipped && b.isIdentified);
+    console.log('[calculatePlayerStats] 已装备且已鉴定:', equippedBones.length, '个');
+    
+    equippedBones.forEach(bone => {
+      console.log('[calculatePlayerStats] 处理魂骨:', bone.name, '属性类型:', bone.attributeType, '值:', bone.attributeValue);
+      switch (bone.attributeType) {
+        case 'health':
+          stats.health += bone.attributeValue;
+          break;
+        case 'defense':
+          stats.defense += bone.attributeValue;
+          break;
+        case 'dodge':
+          stats.dodge += bone.attributeValue / 100;
+          break;
+        case 'knockback':
+          stats.knockback += bone.attributeValue / 100;
+          break;
+        case 'slow':
+          stats.zombieSlow += bone.attributeValue / 100;
+          break;
+        default:
+          console.warn('[calculatePlayerStats] 未知属性类型:', bone.attributeType);
+      }
+    });
+    
+    stats.dodge = Math.min(stats.dodge, 0.8);
+    stats.zombieSlow = Math.min(stats.zombieSlow, 0.5);
+    
+    console.log('[calculatePlayerStats] 最终属性:', JSON.stringify(stats));
+  } catch (err) {
+    console.error('[calculatePlayerStats] 计算出错:', err);
+  }
+  
+  return stats;
+}
+
+// 获取当前装备魂骨的套装效果（辅助函数）
+async function getActiveSetBonuses(playerId) {
+  if (!playerId) return [];
+  const bones = await db.soulBones.where('playerId').equals(playerId).toArray();
+  return getSetBonus(bones);
+}
+
+// 伤害计算（阶段六：任务 6.3 - 伤害计算）
+function calculateDamage(zombieAttack, playerDefense) {
+  const damage = Math.max(0, zombieAttack - playerDefense);
+  return damage;
+}
+
+// 僵尸攻击处理（阶段六：任务 6.3 - 闪避判定和伤害计算）
+function onZombieAttack(playerStats) {
+  const zombieBaseAttack = 100;
+  const playerDefense = playerStats.defense || 0;
+  
+  if (Math.random() < playerStats.dodge) {
+    return { dodged: true, damage: 0 };
+  }
+  
+  const damage = calculateDamage(zombieBaseAttack, playerDefense);
+  return { dodged: false, damage };
+}
+
 // 清理重复装备的魂骨（每个部位只能装备一个）
 async function cleanupDuplicateEquippedBones() {
   const allProfiles = await db.playerProfiles.toArray();
@@ -934,6 +1022,8 @@ const state = {
   zombieStartTime: null, // 僵尸开始移动的时间
   zombiePushBack: 0, // 累计被子弹击退的百分比
   zombieForward: 0, // 累计答错前进的百分比
+  extraLifeUsed: false, // 柔骨兔套装失败重生是否已使用
+  playerStats: null, // 当前玩家属性缓存
 };
 
 // 等级系统辅助函数
@@ -3318,25 +3408,35 @@ ${text}`;
     }
   },
 
-  // 初始化僵尸游戏
-  initZombieGame(wordCount) {
-    // 计算总时间：每个单词 15 秒
-    state.zombieTotalTime = wordCount * 15;
-    state.zombiePosition = 0; // 从 0 开始（最右边）
+  // 初始化僵尸游戏（阶段六：任务 6.3）
+  async initZombieGame(wordCount) {
+    const baseTime = wordCount * 15;
+    const playerId = await this.getCurrentPlayerId();
+    const playerStats = await calculatePlayerStats(playerId);
+    
+    const slowEffect = playerStats.zombieSlow || 0;
+    const adjustedTime = baseTime / (1 - slowEffect);
+    
+    state.zombieTotalTime = adjustedTime;
+    state.zombiePosition = 0;
     state.zombieStartTime = Date.now();
-    state.zombiePushBack = 0; // 重置击退量
-    state.zombieForward = 0; // 重置前进量
+    state.zombiePushBack = 0;
+    state.zombieForward = 0;
+    state.playerStats = playerStats;
+    state.playerMaxHealth = playerStats.health;
+    state.playerCurrentHealth = playerStats.health;
+    state.extraLifeUsed = false;
+    state.zombieAttackCount = 0;
 
-    // 重置僵尸显示位置
     this.updateZombieDisplay();
+    this.updatePlayerHealthDisplay();
 
-    // 启动僵尸移动计时器
     if (state.zombieTimer) {
       clearInterval(state.zombieTimer);
     }
     state.zombieTimer = setInterval(() => {
       this.updateZombiePosition();
-    }, 100); // 每 100ms 更新一次位置
+    }, 100);
   },
 
   // 更新僵尸位置（基于时间自动前进）
@@ -3351,15 +3451,12 @@ ${text}`;
       return;
     }
 
-    // 计算基于时间的自动前进
+    // 计算基于时间的自动前进（不限制在100%，这样击退后还能继续前进）
     const elapsed = (Date.now() - state.zombieStartTime) / 1000; // 已过去秒数
     const progressPercent = (elapsed / state.zombieTotalTime) * 100;
 
-    // 时间推进的基础位置（不考虑击退和前进）
-    const basePosition = Math.min(progressPercent, 100);
-    
-    // 实际位置 = 基础位置 - 累计击退量 + 累计前进量
-    const actualPosition = Math.min(Math.max(basePosition - state.zombiePushBack + state.zombieForward, 0), 100);
+    // 实际位置 = 基础位置 - 累计击退量 + 累计前进量（最终结果限制在0-100）
+    const actualPosition = Math.min(Math.max(progressPercent - state.zombiePushBack + state.zombieForward, 0), 100);
     
     // 更新位置
     state.zombiePosition = actualPosition;
@@ -3368,6 +3465,23 @@ ${text}`;
     // 检查是否到达
     if (state.zombiePosition >= 100) {
       this.handleZombieReached();
+    }
+  },
+
+  // 游戏结束，清理定时器
+  endZombieGame() {
+    if (state.zombieTimer) {
+      clearInterval(state.zombieTimer);
+      state.zombieTimer = null;
+    }
+  },
+
+  // 更新玩家生命值显示
+  updatePlayerHealthDisplay() {
+    const healthEl = document.getElementById('player-health-container');
+    
+    if (healthEl) {
+      healthEl.textContent = `${Math.round(state.playerCurrentHealth)} / ${Math.round(state.playerMaxHealth)}`;
     }
   },
 
@@ -3395,59 +3509,244 @@ ${text}`;
     }
   },
 
-  // 僵尸前进（答错时调用）
-  moveZombieForward() {
-    // 增加累计前进量
+  // 僵尸前进（答错时调用）（阶段六：任务 6.3 & 6.4）
+  async moveZombieForward() {
+    const playerId = await this.getCurrentPlayerId();
+    const activeSets = await getActiveSetBonuses(playerId);
+    const hasYoumingSet = activeSets.some(s => s.beastType === 'youming');
+    
+    if (hasYoumingSet) {
+      this.showToast('🐱 幽冥灵猫套装触发：答错不惩罚！', 'info');
+      return;
+    }
+    
+    const playerStats = state.playerStats || BASE_PLAYER_STATS;
+    const dodgeRoll = Math.random();
+    
+    if (dodgeRoll < playerStats.dodge) {
+      this.showToast('💨 闪避成功！僵尸攻击落空', 'success');
+      return;
+    }
+    
     state.zombieForward = (state.zombieForward || 0) + 10;
-    // 重新计算并更新位置
     this.updateZombiePosition();
 
-    // 检查是否到达
     if (state.zombiePosition >= 100) {
       setTimeout(() => this.handleZombieReached(), 500);
     }
   },
 
-  // 击退僵尸（答对时调用）
-  pushZombieBack(pushDistance = 5) {
-    // 计算当前实际位置
+  // 击退僵尸（答对时调用）（阶段六：任务 6.3）
+  pushZombieBack(basePushDistance = 5) {
+    const playerStats = state.playerStats || BASE_PLAYER_STATS;
+    const knockbackMultiplier = playerStats.knockback || 1;
+    const actualPushDistance = basePushDistance * knockbackMultiplier;
+    
     const elapsed = (Date.now() - state.zombieStartTime) / 1000;
     const progressPercent = (elapsed / state.zombieTotalTime) * 100;
     const basePosition = Math.min(progressPercent, 100);
     const currentPosition = Math.max(basePosition - state.zombiePushBack + state.zombieForward, 0);
     
-    // 击退量不能超过当前位置，确保僵尸位置不会小于 0
     const maxPushBack = currentPosition + state.zombiePushBack - state.zombieForward;
-    const actualPushBack = Math.min(pushDistance, maxPushBack);
+    const adjustedPushBack = Math.min(actualPushDistance, maxPushBack);
     
-    // 增加累计击退量（但不能超过限制）
-    state.zombiePushBack = (state.zombiePushBack || 0) + actualPushBack;
-    // 重新计算并更新位置
+    state.zombiePushBack = (state.zombiePushBack || 0) + adjustedPushBack;
     this.updateZombiePosition();
   },
 
-  // 处理僵尸到达豌豆
-  handleZombieReached() {
-    // 停止计时器
+  // 处理僵尸到达豌豆（阶段六：任务 6.4 - 柔骨兔套装失败重生）
+  async handleZombieReached() {
+    // 僵尸到达终点，直接结束游戏
     if (state.zombieTimer) {
       clearInterval(state.zombieTimer);
       state.zombieTimer = null;
     }
 
-    // 添加攻击动画
     const indicator = document.getElementById('zombie-indicator');
     if (indicator) {
       indicator.classList.add('reached');
     }
 
-    // 延迟后显示失败画面
+    const playerId = await this.getCurrentPlayerId();
+    const hasRouguSet = await this.checkExtraLife(playerId);
+    
+    if (hasRouguSet && !state.extraLifeUsed) {
+      this.applyExtraLife();
+      // 重生后重置僵尸位置，继续游戏
+      setTimeout(() => {
+        state.zombiePosition = 0;
+        state.zombieStartTime = Date.now();
+        state.zombiePushBack = 0;
+        state.zombieForward = 0;
+        
+        if (indicator) {
+          indicator.classList.remove('reached');
+        }
+        
+        this.updateZombieDisplay();
+        
+        // 重新启动计时器
+        state.zombieTimer = setInterval(() => {
+          this.updateZombiePosition();
+        }, 100);
+        
+        this.showToast(`🐰 柔骨兔套装触发！重生继续战斗！`, 'success');
+      }, 1000);
+      return;
+    }
+
+    // 没有柔骨兔套装，僵尸到达终点，游戏结束
+    this.showToast('🕷️ 僵尸已到达！游戏结束', 'error');
     setTimeout(() => {
       this.showPracticeFailed();
-    }, 1000);
+    }, 1500);
+  },
+
+  // 显示受伤动画
+  showDamageAnimation(damage) {
+    const practiceArea = document.getElementById('practice-area');
+    if (practiceArea) {
+      practiceArea.style.animation = 'shake 0.5s ease-in-out';
+      setTimeout(() => {
+        practiceArea.style.animation = '';
+      }, 500);
+    }
+    
+    const damageEl = document.createElement('div');
+    damageEl.style.cssText = `
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 48px;
+      font-weight: 900;
+      color: #e74c3c;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+      z-index: 10000;
+      pointer-events: none;
+      animation: damageFloat 1.5s ease-out forwards;
+    `;
+    damageEl.textContent = damage === 0 ? '免疫' : `-${damage}`;
+    document.body.appendChild(damageEl);
+    
+    setTimeout(() => {
+      if (document.body.contains(damageEl)) {
+        document.body.removeChild(damageEl);
+      }
+    }, 1500);
+  },
+
+  // 显示闪避动画
+  showDodgeAnimation() {
+    const practiceArea = document.getElementById('practice-area');
+    if (practiceArea) {
+      practiceArea.style.animation = 'shake 0.5s ease-in-out';
+      setTimeout(() => {
+        practiceArea.style.animation = '';
+      }, 500);
+    }
+    
+    const dodgeEl = document.createElement('div');
+    dodgeEl.style.cssText = `
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 36px;
+      font-weight: 900;
+      color: #3498db;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+      z-index: 10000;
+      pointer-events: none;
+      animation: damageFloat 1.5s ease-out forwards;
+    `;
+    dodgeEl.textContent = '💨 闪避!';
+    document.body.appendChild(dodgeEl);
+    
+    setTimeout(() => {
+      if (document.body.contains(dodgeEl)) {
+        document.body.removeChild(dodgeEl);
+      }
+    }, 1500);
+  },
+
+  // 显示玩家受伤动画
+  showPlayerDamageAnimation(damage) {
+    const practiceArea = document.getElementById('practice-area');
+    if (practiceArea) {
+      practiceArea.style.animation = 'shake 0.5s ease-in-out';
+      setTimeout(() => {
+        practiceArea.style.animation = '';
+      }, 500);
+    }
+    
+    // 角色受击动画
+    const characterImage = document.getElementById('character-image');
+    if (characterImage) {
+      characterImage.classList.add('player-hit');
+      setTimeout(() => {
+        characterImage.classList.remove('player-hit');
+      }, 500);
+    }
+    
+    const damageEl = document.createElement('div');
+    damageEl.style.cssText = `
+      position: fixed;
+      top: 40%;
+      left: 30%;
+      transform: translate(-50%, -50%);
+      font-size: 48px;
+      font-weight: 900;
+      color: #e74c3c;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+      z-index: 10000;
+      pointer-events: none;
+      animation: damageFloat 1.5s ease-out forwards;
+    `;
+    damageEl.textContent = `-${damage}`;
+    document.body.appendChild(damageEl);
+    
+    setTimeout(() => {
+      if (document.body.contains(damageEl)) {
+        document.body.removeChild(damageEl);
+      }
+    }, 1500);
+  },
+
+  // 显示免疫动画
+  showImmuneAnimation() {
+    const immuneEl = document.createElement('div');
+    immuneEl.style.cssText = `
+      position: fixed;
+      top: 40%;
+      left: 30%;
+      transform: translate(-50%, -50%);
+      font-size: 36px;
+      font-weight: 900;
+      color: #27ae60;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+      z-index: 10000;
+      pointer-events: none;
+      animation: damageFloat 1.5s ease-out forwards;
+    `;
+    immuneEl.textContent = '🛡️ 免疫!';
+    document.body.appendChild(immuneEl);
+    
+    setTimeout(() => {
+      if (document.body.contains(immuneEl)) {
+        document.body.removeChild(immuneEl);
+      }
+    }, 1500);
   },
 
   // 显示练习失败画面
   showPracticeFailed() {
+    // 清理僵尸定时器，防止游戏结束后继续触发
+    if (state.zombieTimer) {
+      clearInterval(state.zombieTimer);
+      state.zombieTimer = null;
+    }
+    
     const modal = document.getElementById('practice-failed-modal');
     const statsEl = document.getElementById('failed-stats');
     const scoreEl = document.getElementById('failed-score');
@@ -3485,7 +3784,7 @@ ${text}`;
     modal.classList.add('active');
   },
 
-  // 保存失败练习成绩
+  // 保存失败练习成绩（阶段六：任务 6.4 - 七宝琉璃套装失败获积分）
   async saveFailedPracticeScore() {
     const playerNameInput = document.getElementById('failed-player-name-input');
     const playerName = playerNameInput.value.trim();
@@ -3495,20 +3794,27 @@ ${text}`;
       return;
     }
 
-    // 保存成绩到数据库
+    const playerId = await this.getCurrentPlayerId();
+    const activeSets = await getActiveSetBonuses(playerId);
+    const hasQibaoSet = activeSets.some(s => s.beastType === 'qibao');
+    
+    let finalPoints = state.practiceScore;
+    if (hasQibaoSet) {
+      finalPoints = Math.floor(state.practiceScore * 0.5);
+      this.showToast(`💎 七宝琉璃套装触发：失败获得 ${finalPoints} 积分（50%）`, 'success');
+    }
+
     await db.practiceScores.add({
       playerName: playerName,
-      totalScore: state.practiceScore,
+      totalScore: finalPoints,
       wordCount: state.totalWordsInPractice,
       correctCount: state.correctWordsInPractice,
       createdAt: Date.now()
     });
 
-    // 更新玩家档案和魂力（addSpiritPower 会同步更新 playerProfiles 和 playerSpiritPower）
     const oldProfile = await getPlayerProfile(playerName);
-    const spiritResult = await addSpiritPower(playerName, state.practiceScore, 'practice_failed');
+    const spiritResult = await addSpiritPower(playerName, finalPoints, 'practice_failed');
     
-    // 检查是否因为需要突破而被阻止
     if (spiritResult && spiritResult.blocked) {
       this.showToast('⚠️ 突破限制！' + spiritResult.reason, 'error');
       document.getElementById('practice-failed-modal').classList.remove('active');
@@ -3516,7 +3822,6 @@ ${text}`;
       return;
     }
     
-    // 检查旧版等级系统是否升级
     if (oldProfile && spiritResult) {
       const newLevelInfo = LEVEL_SYSTEM.levels.find(l => l.id === spiritResult.newLevel.level);
       const oldLevelInfo = LEVEL_SYSTEM.levels.find(l => l.id === oldProfile.level);
@@ -3528,7 +3833,6 @@ ${text}`;
 
     this.showToast('成绩已保存', 'success');
 
-    // 关闭弹窗并退出练习
     document.getElementById('practice-failed-modal').classList.remove('active');
     this.endPractice();
   },
@@ -3593,9 +3897,7 @@ ${text}`;
 
     zombieImg.src = attackSrc;
 
-    // 边播放攻击动图边向前移动 10%
-    this.moveZombieForward();
-
+    // 注意：僵尸前进已在 checkAnswer 的错误处理中处理，这里只播放动画
     setTimeout(() => {
       zombieImg.src = walkSrc;
       if (callback) callback();
@@ -3843,12 +4145,78 @@ ${text}`;
 
       // 播放蜘蛛攻击动画（仅在未触发答错不惩罚时）
       if (!noPenalty) {
-        this.playSpiderAttackAnimation(() => {
-          // 动画完成后无需额外移动
+        // 答错惩罚：僵尸前进10%
+        const zombieForwardAmount = 10; // 答错僵尸前进10%
+        state.zombieForward = (state.zombieForward || 0) + zombieForwardAmount;
+        
+        // 更新显示（updateZombiePosition 定时器会自动应用 zombieForward 计算位置）
+        this.updateZombieDisplay();
+        
+        // 检查僵尸是否到达终点（100%）
+        if (state.zombiePosition >= 100) {
+          this.showToast('🕷️ 僵尸已到达！游戏结束', 'error');
+          setTimeout(() => {
+            this.showPracticeFailed();
+          }, 1500);
+          return;
+        }
+        
+        // 僵尸发动攻击，玩家受到伤害
+        this.playSpiderAttackAnimation(async () => {
+          // 计算伤害
+          const playerStats = state.playerStats || BASE_PLAYER_STATS;
+          const damageResult = onZombieAttack(playerStats);
+          
+          if (damageResult.dodged) {
+            this.showToast('💨 闪避成功！僵尸攻击被躲避', 'success');
+            this.showDodgeAnimation();
+          } else {
+            // 玩家受到伤害
+            state.playerCurrentHealth = Math.max(0, state.playerCurrentHealth - damageResult.damage);
+            this.updatePlayerHealthDisplay();
+            
+            if (damageResult.damage > 0) {
+              this.showToast(`💔 受到 ${damageResult.damage} 点伤害！剩余生命: ${Math.round(state.playerCurrentHealth)}/${Math.round(state.playerMaxHealth)}`, 'error');
+              this.showPlayerDamageAnimation(damageResult.damage);
+            } else {
+              this.showToast('🛡️ 防御太高！僵尸攻击无效', 'success');
+              this.showImmuneAnimation();
+            }
+            
+            // 检查是否生命值耗尽
+            if (state.playerCurrentHealth <= 0) {
+              setTimeout(() => {
+                this.showToast('💀 生命值耗尽！游戏结束', 'error');
+                setTimeout(() => {
+                  this.showPracticeFailed();
+                }, 1500);
+              }, 1000);
+              return;
+            }
+          }
+          
+          // 显示受伤反馈
+          feedback.innerHTML = `
+            <div>❌ 拼写错误</div>
+            <div class="correct-word">正确：${word.word}</div>
+            <div style="margin-top: 8px; font-size: 13px; color: #e74c3c;">
+              僵尸前进 + 攻击！
+              ${damageResult.dodged ? '闪避成功！' : `受到伤害: ${damageResult.damage}`}
+            </div>
+          `;
         });
       } else {
         this.showToast('🐱 幽冥灵猫套装：僵尸未前进！', 'info');
+        feedback.innerHTML = `
+          <div>❌ 拼写错误</div>
+          <div class="correct-word">正确：${word.word}</div>
+          <div style="margin-top: 8px; font-size: 13px; color: #27ae60;">
+            幽冥灵猫套装保护：无惩罚
+          </div>
+        `;
       }
+      
+      feedback.className = 'practice-feedback incorrect show';
 
       // Increment error count - 先从数据库获取最新值，确保正确累加
       const currentWord = await db.words.get(word.id);
@@ -3870,15 +4238,6 @@ ${text}`;
       } else {
         state.wrongWordsInRound[existingIndex] = updatedWordData;
       }
-
-      // Highlight differences
-      const highlighted = this.highlightDifferences(input, word.word);
-
-      feedback.innerHTML = `
-        <div>❌ 拼写错误</div>
-        <div class="correct-word">正确：${word.word}</div>
-      `;
-      feedback.className = 'practice-feedback incorrect show';
 
       // Update button to next
       btn.textContent = '下一词';
@@ -4543,14 +4902,17 @@ ${text}`;
       // 渲染副本任务
       await this.renderDungeons(playerName);
       
-      // 渲染魂骨快速预览
+      // 渲染魂骨快速预览、装备列表、属性加成和对战属性
       const playerProfile = await db.playerProfiles.where('playerName').equals(playerName).first();
       if (playerProfile) {
         await this.renderSoulBoneQuickView(playerProfile.id);
         await this.renderEquippedSoulBones(playerProfile.id);
         await this.renderSoulBoneBonusStats(playerProfile.id);
+        await this.renderPlayerBattleStats(playerProfile.id);
       }
     } else {
+      // 未登录时也重置对战属性为默认值
+      this.resetPlayerBattleStats();
       document.getElementById('profile-total-practices').textContent = '0';
       document.getElementById('profile-total-words').textContent = '0';
       document.getElementById('profile-total-correct').textContent = '0';
@@ -4565,6 +4927,34 @@ ${text}`;
       
       const bonusStatsEl = document.getElementById('soul-bone-bonus-stats');
       if (bonusStatsEl) bonusStatsEl.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-muted); width: 100%;">请先登录角色</div>';
+      
+      // 隐藏魂骨相关区域
+      const soulBoneCard = document.querySelector('.soulbone-quickview-card');
+      if (soulBoneCard) soulBoneCard.style.display = 'none';
+      
+      // 重置对战属性为默认值
+      this.resetPlayerBattleStats();
+    }
+  },
+
+  // 重置对战属性为默认值
+  resetPlayerBattleStats() {
+    const healthEl = document.getElementById('stat-health');
+    const defenseEl = document.getElementById('stat-defense');
+    const dodgeEl = document.getElementById('stat-dodge');
+    const knockbackEl = document.getElementById('stat-knockback');
+    const slowEl = document.getElementById('stat-slow');
+    
+    if (healthEl) healthEl.textContent = Math.round(BASE_PLAYER_STATS.health);
+    if (defenseEl) defenseEl.textContent = Math.round(BASE_PLAYER_STATS.defense);
+    if (dodgeEl) dodgeEl.textContent = (BASE_PLAYER_STATS.dodge * 100).toFixed(1) + '%';
+    if (knockbackEl) knockbackEl.textContent = (BASE_PLAYER_STATS.knockback * 100).toFixed(0) + '%';
+    if (slowEl) slowEl.textContent = (BASE_PLAYER_STATS.zombieSlow * 100).toFixed(1) + '%';
+    
+    // 清空套装效果
+    const containerEl = document.getElementById('active-set-bonuses');
+    if (containerEl) {
+      containerEl.innerHTML = '<div style="text-align: center; padding: 12px; color: var(--text-muted); font-size: 13px;">集齐5件同种魂骨激活套装效果</div>';
     }
   },
 
@@ -4996,6 +5386,7 @@ ${text}`;
     await this.renderEquippedSoulBones(profile.id);
     await this.renderSoulBoneBonusStats(profile.id);
     await this.renderSoulBoneQuickView(profile.id);
+    await this.renderPlayerBattleStats(profile.id);
     
     // 更新角色选择器的高亮状态
     const selectorContainer = document.getElementById('profile-character-selector');
@@ -7073,6 +7464,7 @@ ${wordList}
     await this.renderSoulBoneQuickView(playerId);
     await this.renderEquippedSoulBones(playerId);
     await this.renderSoulBoneBonusStats(playerId);
+    await this.renderPlayerBattleStats(playerId);
   },
 
   // 打开魂骨仓库页面（阶段五：任务5.4）
@@ -7638,6 +8030,79 @@ ${wordList}
     statsEl.innerHTML = '<div style="font-size: 14px; line-height: 1.8;">' +
       activeStats.map(stat => `<span style="color: ${stat.color}; font-weight: 700;">+${stat.total} ${stat.name}</span>`).join('  ') +
       '</div>';
+  },
+
+  // 渲染玩家对战属性（阶段六：任务 6.5）
+  async renderPlayerBattleStats(playerId) {
+    try {
+      console.log('[renderPlayerBattleStats] 开始执行, playerId:', playerId);
+      
+      // 验证 DOM 元素存在
+      const healthEl = document.getElementById('stat-health');
+      const defenseEl = document.getElementById('stat-defense');
+      const dodgeEl = document.getElementById('stat-dodge');
+      const knockbackEl = document.getElementById('stat-knockback');
+      const slowEl = document.getElementById('stat-slow');
+      
+      const allElementsExist = healthEl && defenseEl && dodgeEl && knockbackEl && slowEl;
+      console.log('[renderPlayerBattleStats] DOM 元素存在:', allElementsExist, {
+        healthEl: !!healthEl,
+        defenseEl: !!defenseEl,
+        dodgeEl: !!dodgeEl,
+        knockbackEl: !!knockbackEl,
+        slowEl: !!slowEl
+      });
+      
+      if (!allElementsExist) {
+        console.warn('[renderPlayerBattleStats] 部分 DOM 元素不存在，跳过渲染');
+        return;
+      }
+      
+      if (!playerId) {
+        console.warn('[renderPlayerBattleStats] playerId 为空，重置为基础属性');
+        this.resetPlayerBattleStats();
+        return;
+      }
+      
+      const stats = await calculatePlayerStats(playerId);
+      
+      console.log('[renderPlayerBattleStats] 更新 DOM 元素:', JSON.stringify(stats));
+      
+      healthEl.textContent = Math.round(stats.health);
+      defenseEl.textContent = Math.round(stats.defense);
+      dodgeEl.textContent = (stats.dodge * 100).toFixed(1) + '%';
+      knockbackEl.textContent = (stats.knockback * 100).toFixed(0) + '%';
+      slowEl.textContent = (stats.zombieSlow * 100).toFixed(1) + '%';
+      
+      await this.renderActiveSetBonuses(playerId);
+      console.log('[renderPlayerBattleStats] 渲染完成');
+    } catch (err) {
+      console.error('[renderPlayerBattleStats] 渲染出错:', err);
+    }
+  },
+
+  // 渲染激活的套装效果（阶段六：任务 6.5）
+  async renderActiveSetBonuses(playerId) {
+    const containerEl = document.getElementById('active-set-bonuses');
+    if (!containerEl) return;
+    
+    const activeSets = await getActiveSetBonuses(playerId);
+    
+    if (activeSets.length === 0) {
+      containerEl.innerHTML = '<div style="text-align: center; padding: 12px; color: var(--text-muted); font-size: 13px;">集齐5件同种魂骨激活套装效果</div>';
+      return;
+    }
+    
+    containerEl.innerHTML = activeSets.map(set => `
+      <div style="display: flex; align-items: center; gap: 10px; padding: 10px; background: rgba(243, 156, 18, 0.1); border-radius: 8px; border-left: 3px solid #f39c12;">
+        <div style="font-size: 28px;">${set.icon}</div>
+        <div style="flex: 1;">
+          <div style="font-weight: 600; color: #f39c12;">${set.beastName}套装</div>
+          <div style="font-size: 12px; color: var(--text-secondary);">${set.skill}：${set.skillDesc}</div>
+        </div>
+        <div style="font-size: 18px; color: #27ae60;">✅</div>
+      </div>
+    `).join('');
   },
 
   // 获取当前角色ID

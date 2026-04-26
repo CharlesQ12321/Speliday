@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>魂骨属性加成测试</title>
+  <script src="https://unpkg.com/dexie@3.2.4/dist/dexie.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
+    .container { max-width: 900px; margin: 0 auto; }
+    .card { background: white; border-radius: 12px; padding: 24px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+    h1 { color: white; text-align: center; margin-bottom: 24px; font-size: 32px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+    h2 { color: #667eea; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #667eea; }
+    .btn { padding: 12px 24px; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.3s; margin: 8px; }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+    .btn-primary { background: #667eea; color: white; }
+    .btn-success { background: #27ae60; color: white; }
+    .btn-warning { background: #f39c12; color: white; }
+    .btn-danger { background: #e74c3c; color: white; }
+    .stats-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin: 16px 0; }
+    .stat-card { background: #f8f9fa; border-radius: 8px; padding: 16px; text-align: center; border: 2px solid #e0e0e0; transition: all 0.3s; }
+    .stat-card:hover { transform: scale(1.05); border-color: #667eea; }
+    .stat-value { font-size: 32px; font-weight: 700; margin: 8px 0; }
+    .stat-label { font-size: 12px; color: #666; margin-bottom: 4px; }
+    .stat-base { font-size: 11px; color: #999; }
+    .stat-bonus { font-size: 12px; color: #27ae60; font-weight: 600; }
+    .result { padding: 16px; border-radius: 8px; margin: 12px 0; }
+    .result.success { background: #e8f5e9; border-left: 4px solid #27ae60; color: #27ae60; }
+    .result.error { background: #ffebee; border-left: 4px solid #e74c3c; color: #e74c3c; }
+    .result.info { background: #e3f2fd; border-left: 4px solid #2196f3; color: #2196f3; }
+    .bone-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin: 12px 0; }
+    .bone-item { background: #f0f2f5; border-radius: 8px; padding: 12px; border-left: 4px solid #667eea; transition: all 0.3s; }
+    .bone-item:hover { transform: translateX(4px); }
+    .bone-item.disabled { opacity: 0.5; border-left-color: #999; }
+    .bone-name { font-weight: 600; color: #667eea; font-size: 14px; }
+    .bone-attr { font-size: 12px; color: #666; margin-top: 4px; }
+    .log-box { max-height: 300px; overflow-y: auto; background: #1e1e1e; color: #d4d4d4; border-radius: 8px; padding: 12px; font-family: 'Consolas', 'Courier New', monospace; font-size: 13px; }
+    .log-entry { padding: 4px 0; border-bottom: 1px solid #333; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+    th, td { padding: 10px; text-align: center; border-bottom: 1px solid #e0e0e0; }
+    th { background: #f8f9fa; color: #667eea; font-weight: 600; }
+    .pass { color: #27ae60; font-weight: bold; }
+    .fail { color: #e74c3c; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🦴 魂骨属性加成测试</h1>
+    
+    <div class="card">
+      <h2>🎮 测试控制</h2>
+      <div style="text-align: center;">
+        <button class="btn btn-primary" onclick="setupTestData()">📦 创建测试数据</button>
+        <button class="btn btn-success" onclick="runTest()">▶️ 运行测试</button>
+        <button class="btn btn-warning" onclick="testMultipleScenarios()">🔄 多场景测试</button>
+        <button class="btn btn-danger" onclick="clearTestData()">🗑️ 清空数据</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>📊 属性显示（基础值 + 魂骨加成）</h2>
+      <div id="statsDisplay" class="result info">
+        <p>点击"创建测试数据"开始测试</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>🦴 已装备魂骨列表</h2>
+      <div id="bonesDisplay">
+        <p>等待加载...</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>📋 测试结果</h2>
+      <div id="testResult">
+        <p>等待测试...</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>📝 测试日志</h2>
+      <div id="logBox" class="log-box"></div>
+    </div>
+  </div>
+
+  <script>
+    const db = new Dexie('speliday_db');
+    db.version(13).stores({
+      playerProfiles: '++id, playerName, totalPoints, level, lastPlayedAt, avatar',
+      soulBones: '++id, playerId, beastType, slot, isIdentified, isEquipped, attributeType, attributeValue'
+    });
+
+    const BASE_STATS = {
+      health: 1000,
+      defense: 0,
+      dodge: 0,
+      knockback: 1,
+      zombieSlow: 0
+    };
+
+    const BEAST_TYPES = {
+      mantuo: { name: '曼陀罗蛇', icon: '🐍' },
+      rougu: { name: '柔骨兔', icon: '🐰' },
+      xiehou: { name: '邪眸白虎', icon: '🐯' },
+      youming: { name: '幽冥灵猫', icon: '🐱' },
+      qibao: { name: '七宝琉璃', icon: '💎' }
+    };
+
+    const SLOT_NAMES = {
+      head: '头骨',
+      body: '躯干骨',
+      left_arm: '左臂骨',
+      right_arm: '右臂骨',
+      left_leg: '左腿骨',
+      right_leg: '右腿骨',
+      external: '外附魂骨'
+    };
+
+    const ATTRIBUTE_CONFIG = {
+      health: { name: '生命', icon: '❤️', color: '#e74c3c' },
+      defense: { name: '防御', icon: '🛡️', color: '#27ae60' },
+      dodge: { name: '闪避', icon: '💨', color: '#3498db' },
+      knockback: { name: '击退', icon: '💥', color: '#e67e22' },
+      slow: { name: '减速', icon: '❄️', color: '#9b59b6' }
+    };
+
+    let testPlayerId = null;
+
+    function log(msg, type = 'info') {
+      const box = document.getElementById('logBox');
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      const colors = { success: '#4caf50', error: '#f44336', info: '#2196f3', warn: '#ff9800' };
+      const time = new Date().toLocaleTimeString();
+      entry.innerHTML = `<span style="color: #888;">[${time}]</span> <span style="color: ${colors[type] || '#d4d4d4'};">${msg}</span>`;
+      box.insertBefore(entry, box.firstChild);
+    }
+
+    async function setupTestData() {
+      log('正在创建测试数据...', 'info');
+      
+      let player = await db.playerProfiles.where('playerName').equals('魂骨加成测试').first();
+      if (!player) {
+        const id = await db.playerProfiles.add({
+          playerName: '魂骨加成测试',
+          totalPoints: 0,
+          level: 1,
+          lastPlayedAt: Date.now()
+        });
+        player = await db.playerProfiles.get(id);
+        log('✅ 创建测试角色: 魂骨加成测试 (ID: ' + player.id + ')', 'success');
+      } else {
+        log('ℹ️ 使用已存在的测试角色 (ID: ' + player.id + ')', 'info');
+      }
+      
+      testPlayerId = player.id;
+      
+      await db.soulBones.where('playerId').equals(testPlayerId).delete();
+      
+      const testBones = [
+        { beastType: 'mantuo', slot: 'head', attributeType: 'health', attributeValue: 15, isIdentified: true, isEquipped: true },
+        { beastType: 'mantuo', slot: 'body', attributeType: 'defense', attributeValue: 10, isIdentified: true, isEquipped: true },
+        { beastType: 'rougu', slot: 'left_arm', attributeType: 'dodge', attributeValue: 5, isIdentified: true, isEquipped: true },
+        { beastType: 'xiehou', slot: 'right_leg', attributeType: 'knockback', attributeValue: 8, isIdentified: true, isEquipped: true },
+        { beastType: 'youming', slot: 'external', attributeType: 'slow', attributeValue: 3, isIdentified: true, isEquipped: true },
+        { beastType: 'qibao', slot: 'head', attributeType: 'health', attributeValue: 100, isIdentified: true, isEquipped: false },
+        { beastType: 'qibao', slot: 'body', attributeType: 'defense', attributeValue: 100, isIdentified: false, isEquipped: true }
+      ];
+      
+      for (const bone of testBones) {
+        const beast = BEAST_TYPES[bone.beastType];
+        const slotName = SLOT_NAMES[bone.slot];
+        const attr = ATTRIBUTE_CONFIG[bone.attributeType];
+        
+        await db.soulBones.add({
+          playerId: testPlayerId,
+          beastType: bone.beastType,
+          beastName: beast.name,
+          slot: bone.slot,
+          slotName: slotName,
+          name: beast.name + slotName,
+          attributeType: bone.attributeType,
+          attributeName: attr.name,
+          attributeValue: bone.attributeValue,
+          isIdentified: bone.isIdentified,
+          isEquipped: bone.isEquipped,
+          obtainedAt: Date.now()
+        });
+      }
+      
+      log('✅ 创建 ' + testBones.length + ' 个测试魂骨', 'success');
+      log('   其中 5 个已装备+已鉴定（计入加成）', 'info');
+      log('   其中 1 个未装备（不计入加成）', 'warn');
+      log('   其中 1 个未鉴定（不计入加成）', 'warn');
+      
+      displayBones();
+    }
+
+    async function displayBones() {
+      if (!testPlayerId) {
+        document.getElementById('bonesDisplay').innerHTML = '<p>请先创建测试数据</p>';
+        return;
+      }
+      
+      const bones = await db.soulBones.where('playerId').equals(testPlayerId).toArray();
+      const container = document.getElementById('bonesDisplay');
+      
+      if (bones.length === 0) {
+        container.innerHTML = '<p>暂无魂骨数据</p>';
+        return;
+      }
+      
+      let html = '<div class="bone-list">';
+      
+      bones.forEach(bone => {
+        const isActive = bone.isEquipped && bone.isIdentified;
+        const beast = BEAST_TYPES[bone.beastType];
+        const attr = ATTRIBUTE_CONFIG[bone.attributeType];
+        
+        html += '<div class="bone-item' + (isActive ? '' : ' disabled') + '">';
+        html += '<div class="bone-name">' + beast.icon + ' ' + bone.name + '</div>';
+        html += '<div class="bone-attr">' + attr.icon + ' ' + attr.name + ' +' + bone.attributeValue + '</div>';
+        
+        if (isActive) {
+          html += '<div class="bone-attr" style="color: #27ae60;">✅ 已装备+已鉴定</div>';
+        } else if (!bone.isIdentified) {
+          html += '<div class="bone-attr" style="color: #ff9800;">🔒 未鉴定（不计入）</div>';
+        } else {
+          html += '<div class="bone-attr" style="color: #999;">❌ 未装备（不计入）</div>';
+        }
+        
+        html += '</div>';
+      });
+      
+      html += '</div>';
+      const equipped = bones.filter(b => b.isEquipped && b.isIdentified);
+      html += '<p style="margin-top: 12px; color: #666; text-align: center;">总计: ' + bones.length + ' 个魂骨，其中 ' + equipped.length + ' 个已装备且已鉴定</p>';
+      
+      container.innerHTML = html;
+    }
+
+    function calculateStats(equippedBones) {
+      let stats = { ...BASE_STATS };
+      
+      equippedBones.forEach(bone => {
+        switch (bone.attributeType) {
+          case 'health': stats.health += bone.attributeValue; break;
+          case 'defense': stats.defense += bone.attributeValue; break;
+          case 'dodge': stats.dodge += bone.attributeValue / 100; break;
+          case 'knockback': stats.knockback += bone.attributeValue / 100; break;
+          case 'slow': stats.zombieSlow += bone.attributeValue / 100; break;
+        }
+      });
+      
+      stats.dodge = Math.min(stats.dodge, 0.8);
+      stats.zombieSlow = Math.min(stats.zombieSlow, 0.5);
+      
+      return stats;
+    }
+
+    async function runTest() {
+      if (!testPlayerId) {
+        log('❌ 请先创建测试数据', 'error');
+        return;
+      }
+      
+      log('🚀 开始测试...', 'info');
+      
+      const bones = await db.soulBones.where('playerId').equals(testPlayerId).toArray();
+      const equipped = bones.filter(b => b.isEquipped && b.isIdentified);
+      
+      const stats = calculateStats(equipped);
+      
+      const expectedHealth = BASE_STATS.health + 15;
+      const expectedDefense = BASE_STATS.defense + 10;
+      const expectedDodge = BASE_STATS.dodge + 5/100;
+      const expectedKnockback = BASE_STATS.knockback + 8/100;
+      const expectedSlow = BASE_STATS.zombieSlow + 3/100;
+      
+      const statsHtml = '<div class="stats-grid">' +
+        '<div class="stat-card">' +
+          '<div class="stat-label">' + ATTRIBUTE_CONFIG.health.icon + ' 生命值</div>' +
+          '<div class="stat-value" style="color: ' + ATTRIBUTE_CONFIG.health.color + ';">' + Math.round(stats.health) + '</div>' +
+          '<div class="stat-base">基础: ' + BASE_STATS.health + '</div>' +
+          '<div class="stat-bonus">加成: +' + (stats.health - BASE_STATS.health) + '</div>' +
+        '</div>' +
+        '<div class="stat-card">' +
+          '<div class="stat-label">' + ATTRIBUTE_CONFIG.defense.icon + ' 防御力</div>' +
+          '<div class="stat-value" style="color: ' + ATTRIBUTE_CONFIG.defense.color + ';">' + Math.round(stats.defense) + '</div>' +
+          '<div class="stat-base">基础: ' + BASE_STATS.defense + '</div>' +
+          '<div class="stat-bonus">加成: +' + (stats.defense - BASE_STATS.defense) + '</div>' +
+        '</div>' +
+        '<div class="stat-card">' +
+          '<div class="stat-label">' + ATTRIBUTE_CONFIG.dodge.icon + ' 闪避率</div>' +
+          '<div class="stat-value" style="color: ' + ATTRIBUTE_CONFIG.dodge.color + ';">' + (stats.dodge * 100).toFixed(1) + '%</div>' +
+          '<div class="stat-base">基础: 0%</div>' +
+          '<div class="stat-bonus">加成: +' + (stats.dodge * 100).toFixed(1) + '%</div>' +
+        '</div>' +
+        '<div class="stat-card">' +
+          '<div class="stat-label">' + ATTRIBUTE_CONFIG.knockback.icon + ' 击退效果</div>' +
+          '<div class="stat-value" style="color: ' + ATTRIBUTE_CONFIG.knockback.color + ';">' + (stats.knockback * 100).toFixed(0) + '%</div>' +
+          '<div class="stat-base">基础: 100%</div>' +
+          '<div class="stat-bonus">加成: +' + ((stats.knockback - 1) * 100).toFixed(0) + '%</div>' +
+        '</div>' +
+        '<div class="stat-card">' +
+          '<div class="stat-label">' + ATTRIBUTE_CONFIG.slow.icon + ' 僵尸减速</div>' +
+          '<div class="stat-value" style="color: ' + ATTRIBUTE_CONFIG.slow.color + ';">' + (stats.zombieSlow * 100).toFixed(1) + '%</div>' +
+          '<div class="stat-base">基础: 0%</div>' +
+          '<div class="stat-bonus">加成: +' + (stats.zombieSlow * 100).toFixed(1) + '%</div>' +
+        '</div>' +
+      '</div>';
+      
+      document.getElementById('statsDisplay').innerHTML = statsHtml;
+      
+      const tests = [
+        { name: '生命值', pass: Math.abs(stats.health - expectedHealth) < 0.01, expected: expectedHealth, actual: stats.health },
+        { name: '防御力', pass: Math.abs(stats.defense - expectedDefense) < 0.01, expected: expectedDefense, actual: stats.defense },
+        { name: '闪避率', pass: Math.abs(stats.dodge - expectedDodge) < 0.001, expected: expectedDodge, actual: stats.dodge },
+        { name: '击退效果', pass: Math.abs(stats.knockback - expectedKnockback) < 0.001, expected: expectedKnockback, actual: stats.knockback },
+        { name: '僵尸减速', pass: Math.abs(stats.zombieSlow - expectedSlow) < 0.001, expected: expectedSlow, actual: stats.zombieSlow }
+      ];
+      
+      const allPassed = tests.every(t => t.pass);
+      
+      let resultHtml = '<div class="result ' + (allPassed ? 'success' : 'error') + '">';
+      resultHtml += '<h3 style="margin-bottom: 12px;">' + (allPassed ? '✅ 所有测试通过！' : '❌ 部分测试失败！') + '</h3>';
+      resultHtml += '<table><tr><th>属性</th><th>基础值</th><th>魂骨加成</th><th>预期值</th><th>实际值</th><th>结果</th></tr>';
+      
+      tests.forEach(t => {
+        const bonus = t.expected - (t.name === '击退效果' ? 1 : t.name === '生命值' ? 1000 : 0);
+        const baseValue = t.name === '击退效果' ? '100%' : t.name === '生命值' ? '1000' : t.name.includes('%') ? '0%' : '0';
+        const formatValue = (v) => {
+          if (t.name === '生命值') return Math.round(v);
+          if (t.name === '防御力') return Math.round(v);
+          return (v * 100).toFixed(1) + '%';
+        };
+        
+        resultHtml += '<tr>' +
+          '<td>' + t.name + '</td>' +
+          '<td>' + baseValue + '</td>' +
+          '<td>+' + (t.name === '生命值' ? (t.expected - 1000) : t.name === '防御力' ? t.expected : (t.expected * 100).toFixed(1) + '%') + '</td>' +
+          '<td>' + formatValue(t.expected) + '</td>' +
+          '<td>' + formatValue(t.actual) + '</td>' +
+          '<td class="' + (t.pass ? 'pass' : 'fail') + '">' + (t.pass ? '✅' : '❌') + '</td>' +
+        '</tr>';
+      });
+      
+      resultHtml += '</table></div>';
+      document.getElementById('testResult').innerHTML = resultHtml;
+      
+      if (allPassed) {
+        log('🎉 所有属性计算正确！魂骨加成已正确应用', 'success');
+      } else {
+        log('❌ 存在计算错误', 'error');
+        tests.filter(t => !t.pass).forEach(t => {
+          log('   ' + t.name + ': 预期=' + t.expected + ', 实际=' + t.actual, 'error');
+        });
+      }
+    }
+
+    async function testMultipleScenarios() {
+      log('🔄 开始多场景测试...', 'info');
+      
+      if (!testPlayerId) {
+        await setupTestData();
+      }
+      
+      log('场景1: 只装备3件魂骨', 'info');
+      await db.soulBones.where('playerId').equals(testPlayerId).delete();
+      
+      await db.soulBones.add({
+        playerId: testPlayerId, beastType: 'mantuo', slot: 'head',
+        attributeType: 'health', attributeValue: 20, isIdentified: true, isEquipped: true,
+        name: '曼陀罗蛇头骨', beastName: '曼陀罗蛇', slotName: '头骨', attributeName: '生命', obtainedAt: Date.now()
+      });
+      await db.soulBones.add({
+        playerId: testPlayerId, beastType: 'rougu', slot: 'body',
+        attributeType: 'defense', attributeValue: 15, isIdentified: true, isEquipped: true,
+        name: '柔骨兔躯干骨', beastName: '柔骨兔', slotName: '躯干骨', attributeName: '防御', obtainedAt: Date.now()
+      });
+      await db.soulBones.add({
+        playerId: testPlayerId, beastType: 'xiehou', slot: 'left_arm',
+        attributeType: 'dodge', attributeValue: 8, isIdentified: true, isEquipped: true,
+        name: '邪眸白虎左臂骨', beastName: '邪眸白虎', slotName: '左臂骨', attributeName: '闪避', obtainedAt: Date.now()
+      });
+      
+      await displayBones();
+      await runTest();
+      
+      log('场景2: 装备5件魂骨（满配）', 'info');
+      await db.soulBones.where('playerId').equals(testPlayerId).delete();
+      
+      const fullSet = [
+        { beastType: 'mantuo', slot: 'head', attributeType: 'health', attributeValue: 20 },
+        { beastType: 'mantuo', slot: 'body', attributeType: 'defense', attributeValue: 15 },
+        { beastType: 'rougu', slot: 'left_arm', attributeType: 'dodge', attributeValue: 8 },
+        { beastType: 'xiehou', slot: 'right_leg', attributeType: 'knockback', attributeValue: 10 },
+        { beastType: 'youming', slot: 'external', attributeType: 'slow', attributeValue: 5 }
+      ];
+      
+      for (const bone of fullSet) {
+        const beast = BEAST_TYPES[bone.beastType];
+        const slotName = SLOT_NAMES[bone.slot];
+        const attr = ATTRIBUTE_CONFIG[bone.attributeType];
+        
+        await db.soulBones.add({
+          playerId: testPlayerId,
+          beastType: bone.beastType,
+          beastName: beast.name,
+          slot: bone.slot,
+          slotName: slotName,
+          name: beast.name + slotName,
+          attributeType: bone.attributeType,
+          attributeName: attr.name,
+          attributeValue: bone.attributeValue,
+          isIdentified: true,
+          isEquipped: true,
+          obtainedAt: Date.now()
+        });
+      }
+      
+      await displayBones();
+      await runTest();
+      
+      log('✅ 多场景测试完成', 'success');
+    }
+
+    async function clearTestData() {
+      if (testPlayerId) {
+        await db.soulBones.where('playerId').equals(testPlayerId).delete();
+        await db.playerProfiles.where('playerName').equals('魂骨加成测试').delete();
+        testPlayerId = null;
+        log('🗑️ 测试数据已清空', 'info');
+        document.getElementById('statsDisplay').innerHTML = '<p>点击"创建测试数据"开始测试</p>';
+        document.getElementById('bonesDisplay').innerHTML = '<p>等待加载...</p>';
+        document.getElementById('testResult').innerHTML = '<p>等待测试...</p>';
+      }
+    }
+
+    window.onload = () => {
+      log('🎮 测试页面已加载', 'info');
+      log('提示: 依次点击 "创建测试数据" -> "运行测试"', 'info');
+    };
+  </script>
+</body>
+</html>

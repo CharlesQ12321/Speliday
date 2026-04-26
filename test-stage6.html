@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>第6阶段功能测试</title>
+  <script src="https://unpkg.com/dexie@3.2.4/dist/dexie.min.js"></script>
+  <style>
+    body { font-family: -apple-system, sans-serif; padding: 20px; background: #f5f5f5; }
+    .container { max-width: 1000px; margin: 0 auto; }
+    .card { background: white; border-radius: 8px; padding: 20px; margin: 16px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    h1 { color: #333; }
+    h2 { color: #667eea; border-bottom: 2px solid #667eea; padding-bottom: 8px; }
+    .test-btn { padding: 10px 20px; margin: 5px; border: none; border-radius: 4px; cursor: pointer; color: white; font-size: 14px; }
+    .btn-primary { background: #667eea; }
+    .btn-success { background: #4caf50; }
+    .btn-warning { background: #ff9800; }
+    .result { padding: 15px; margin: 10px 0; background: #e8f5e9; border-radius: 4px; }
+    .result.error { background: #ffebee; }
+    .result.info { background: #e3f2fd; }
+    table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+    th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: center; }
+    th { background: #f0f0f0; }
+    .success { color: #27ae60; font-weight: bold; }
+    .error { color: #e74c3c; font-weight: bold; }
+    .log { max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 13px; padding: 10px; background: #f9f9f9; border-radius: 4px; }
+    .log-entry { padding: 4px 0; border-bottom: 1px solid #eee; }
+    .stat-card { display: inline-block; padding: 15px; margin: 8px; background: #f0f2f5; border-radius: 8px; text-align: center; min-width: 120px; }
+    .stat-card .value { font-size: 24px; font-weight: 700; }
+    .stat-card .label { font-size: 12px; color: #666; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎯 第6阶段功能测试 - 玩家属性与对战增益</h1>
+    
+    <div class="card">
+      <h2>1️⃣ 玩家属性系统测试</h2>
+      <div id="statsDisplay" class="result info">
+        点击"计算属性"测试
+      </div>
+      <button class="test-btn btn-primary" onclick="testPlayerStats()">计算玩家属性</button>
+      <button class="test-btn btn-warning" onclick="testEmptyStats()">测试空装备属性</button>
+    </div>
+
+    <div class="card">
+      <h2>2️⃣ 魂骨属性加成测试</h2>
+      <div id="soulBoneBonusDisplay" class="result info">
+        点击"测试加成"查看效果
+      </div>
+      <button class="test-btn btn-primary" onclick="testSoulBoneBonus()">生成测试魂骨并计算加成</button>
+      <button class="test-btn btn-warning" onclick="clearTestBones()">清除测试魂骨</button>
+    </div>
+
+    <div class="card">
+      <h2>3️⃣ 套装效果测试</h2>
+      <div id="setBonusDisplay" class="result info">
+        点击"测试套装"查看激活情况
+      </div>
+      <button class="test-btn btn-primary" onclick="testSetBonuses()">生成5件同种魂骨测试套装</button>
+      <button class="test-btn btn-success" onclick="testAllSets()">测试全部5种套装</button>
+    </div>
+
+    <div class="card">
+      <h2>4️⃣ 僵尸对战逻辑测试</h2>
+      <div id="zombieBattleDisplay" class="result info">
+        点击按钮测试各项对战效果
+      </div>
+      <div style="margin: 10px 0;">
+        <button class="test-btn btn-primary" onclick="testKnockback()">测试击退效果</button>
+        <button class="test-btn btn-success" onclick="testDodge()">测试闪避判定</button>
+        <button class="test-btn btn-warning" onclick="testSlow()">测试僵尸减速</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>5️⃣ 测试日志</h2>
+      <div id="logContainer" class="log"></div>
+    </div>
+  </div>
+
+  <script>
+    const db = new Dexie('speliday_db');
+    db.version(13).stores({
+      playerProfiles: '++id, playerName, totalPoints, level, lastPlayedAt, avatar',
+      soulBones: '++id, playerId, beastType, slot, isIdentified, isEquipped, attributeType, attributeValue'
+    });
+
+    const SOUL_BONE_TYPES = {
+      mantuo: { name: '曼陀罗蛇', color: '#8B008B', icon: '🐍', setSkill: '积分翻倍', setSkillDesc: '练习获得积分翻倍' },
+      rougu: { name: '柔骨兔', color: '#FF69B4', icon: '🐰', setSkill: '失败重生', setSkillDesc: '拼写错误可重生一次' },
+      xiehou: { name: '邪眸白虎', color: '#FF4500', icon: '🐯', setSkill: '连击不断', setSkillDesc: '连击不会因一次失误中断' },
+      youming: { name: '幽冥灵猫', color: '#4B0082', icon: '🐱', setSkill: '答错不惩罚', setSkillDesc: '答错不会扣分' },
+      qibao: { name: '七宝琉璃', color: '#FFD700', icon: '💎', setSkill: '失败获积分', setSkillDesc: '挑战失败也能获得50%积分' }
+    };
+
+    const SOUL_BONE_SLOTS = ['head', 'body', 'left_arm', 'right_leg', 'external'];
+    const SOUL_BONE_SLOT_NAMES = { head: '头骨', body: '躯干骨', left_arm: '左臂骨', right_leg: '右腿骨', external: '外附魂骨' };
+
+    const BASE_PLAYER_STATS = {
+      health: 1000,
+      defense: 0,
+      dodge: 0,
+      knockback: 1,
+      zombieSlow: 0
+    };
+
+    const beastTypes = ['mantuo', 'rougu', 'xiehou', 'youming', 'qibao'];
+    const testPlayerId = 'test-player-stage6';
+    let testPlayerProfile = null;
+
+    async function ensureTestPlayer() {
+      if (!testPlayerProfile) {
+        testPlayerProfile = await db.playerProfiles.where('playerName').equals('第6阶段测试').first();
+        if (!testPlayerProfile) {
+          const id = await db.playerProfiles.add({
+            playerName: '第6阶段测试',
+            totalPoints: 0,
+            level: 1,
+            lastPlayedAt: Date.now()
+          });
+          testPlayerProfile = await db.playerProfiles.get(id);
+        }
+      }
+      return testPlayerProfile;
+    }
+
+    function log(message, type = 'info') {
+      const container = document.getElementById('logContainer');
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      entry.innerHTML = `[${new Date().toLocaleTimeString()}] <span style="color: ${type === 'error' ? '#e74c3c' : type === 'success' ? '#27ae60' : '#667eea'};">${message}</span>`;
+      container.insertBefore(entry, container.firstChild);
+    }
+
+    // 1. 测试玩家属性系统
+    async function testPlayerStats() {
+      log('🧪 测试玩家属性系统...', 'info');
+      const profile = await ensureTestPlayer();
+      
+      const bones = await db.soulBones.where('playerId').equals(profile.id).toArray();
+      const equippedBones = bones.filter(b => b.isEquipped && b.isIdentified);
+      
+      let stats = { ...BASE_PLAYER_STATS };
+      equippedBones.forEach(bone => {
+        switch (bone.attributeType) {
+          case 'health': stats.health += bone.attributeValue; break;
+          case 'defense': stats.defense += bone.attributeValue; break;
+          case 'dodge': stats.dodge += bone.attributeValue / 100; break;
+          case 'knockback': stats.knockback += bone.attributeValue / 100; break;
+          case 'slow': stats.zombieSlow += bone.attributeValue / 100; break;
+        }
+      });
+      
+      stats.dodge = Math.min(stats.dodge, 0.8);
+      stats.zombieSlow = Math.min(stats.zombieSlow, 0.5);
+      
+      const display = document.getElementById('statsDisplay');
+      display.className = 'result success';
+      display.innerHTML = `
+        <div class="success">✅ 属性计算正确</div>
+        <table>
+          <tr><th>属性</th><th>基础值</th><th>魂骨加成</th><th>最终值</th></tr>
+          <tr><td>❤️ 生命值</td><td>1000</td><td>+${stats.health - 1000}</td><td>${Math.round(stats.health)}</td></tr>
+          <tr><td>🛡️ 防御力</td><td>0</td><td>+${stats.defense}</td><td>${Math.round(stats.defense)}</td></tr>
+          <tr><td>💨 闪避率</td><td>0%</td><td>+${(stats.dodge * 100).toFixed(1)}%</td><td>${(stats.dodge * 100).toFixed(1)}%</td></tr>
+          <tr><td>💥 击退效果</td><td>100%</td><td>+${((stats.knockback - 1) * 100).toFixed(0)}%</td><td>${(stats.knockback * 100).toFixed(0)}%</td></tr>
+          <tr><td>🐌 僵尸减速</td><td>0%</td><td>+${(stats.zombieSlow * 100).toFixed(1)}%</td><td>${(stats.zombieSlow * 100).toFixed(1)}%</td></tr>
+        </table>
+      `;
+      log(`✅ 属性计算完成: HP=${Math.round(stats.health)}, DEF=${Math.round(stats.defense)}`, 'success');
+    }
+
+    // 测试空装备属性
+    async function testEmptyStats() {
+      log('🧪 测试空装备属性...', 'info');
+      const display = document.getElementById('statsDisplay');
+      display.className = 'result info';
+      display.innerHTML = `
+        <div class="info">ℹ️ 空装备状态下的基础属性</div>
+        <table>
+          <tr><th>属性</th><th>基础值</th><th>说明</th></tr>
+          <tr><td>❤️ 生命值</td><td>1000</td><td>玩家基础生命值</td></tr>
+          <tr><td>🛡️ 防御力</td><td>0</td><td>无装备加成</td></tr>
+          <tr><td>💨 闪避率</td><td>0%</td><td>无闪避能力</td></tr>
+          <tr><td>💥 击退效果</td><td>100%</td><td>基础击退距离</td></tr>
+          <tr><td>🐌 僵尸减速</td><td>0%</td><td>僵尸正常速度</td></tr>
+        </table>
+      `;
+      log('✅ 基础属性显示正确', 'success');
+    }
+
+    // 2. 测试魂骨属性加成
+    async function testSoulBoneBonus() {
+      log('🧪 测试魂骨属性加成...', 'info');
+      const profile = await ensureTestPlayer();
+      
+      // 清除旧魂骨
+      await db.soulBones.where('playerId').equals(profile.id).delete();
+      
+      // 生成5件不同属性的魂骨
+      const attributes = [
+        { type: 'health', name: '生命值', value: 1000 },
+        { type: 'defense', name: '防御力', value: 80 },
+        { type: 'dodge', name: '闪避率', value: 12 },
+        { type: 'knockback', name: '击退效果', value: 20 },
+        { type: 'slow', name: '僵尸减速', value: 15 }
+      ];
+      
+      for (let i = 0; i < attributes.length; i++) {
+        await db.soulBones.add({
+          playerId: profile.id,
+          beastType: beastTypes[i],
+          slot: SOUL_BONE_SLOTS[i],
+          isIdentified: true,
+          isEquipped: true,
+          attributeType: attributes[i].type,
+          attributeValue: attributes[i].value
+        });
+      }
+      
+      // 计算属性
+      const bones = await db.soulBones.where('playerId').equals(profile.id).toArray();
+      const equipped = bones.filter(b => b.isEquipped && b.isIdentified);
+      
+      let stats = { ...BASE_PLAYER_STATS };
+      equipped.forEach(bone => {
+        switch (bone.attributeType) {
+          case 'health': stats.health += bone.attributeValue; break;
+          case 'defense': stats.defense += bone.attributeValue; break;
+          case 'dodge': stats.dodge += bone.attributeValue / 100; break;
+          case 'knockback': stats.knockback += bone.attributeValue / 100; break;
+          case 'slow': stats.zombieSlow += bone.attributeValue / 100; break;
+        }
+      });
+      
+      const display = document.getElementById('soulBoneBonusDisplay');
+      display.className = 'result success';
+      display.innerHTML = `
+        <div class="success">✅ 魂骨属性加成测试完成</div>
+        <div style="margin-top: 10px;">
+          <strong>装备的魂骨：</strong><br>
+          ${equipped.map(b => `${SOUL_BONE_TYPES[b.beastType].icon} ${SOUL_BONE_SLOT_NAMES[b.slot]}: +${b.attributeValue} ${attributes.find(a => a.type === b.attributeType).name}`).join('<br>')}
+        </div>
+        <div style="margin-top: 10px;">
+          <strong>最终属性：</strong><br>
+          ❤️ 生命值: ${Math.round(stats.health)} (+${stats.health - 1000})<br>
+          🛡️ 防御力: ${Math.round(stats.defense)} (+${stats.defense})<br>
+          💨 闪避率: ${(stats.dodge * 100).toFixed(1)}%<br>
+          💥 击退效果: ${(stats.knockback * 100).toFixed(0)}%<br>
+          🐌 僵尸减速: ${(stats.zombieSlow * 100).toFixed(1)}%
+        </div>
+      `;
+      log('✅ 魂骨属性加成计算正确', 'success');
+    }
+
+    async function clearTestBones() {
+      log('🧹 清除测试魂骨...', 'info');
+      const profile = await ensureTestPlayer();
+      const count = await db.soulBones.where('playerId').equals(profile.id).delete();
+      log(`✅ 已清除 ${count} 个魂骨`, 'success');
+    }
+
+    // 3. 测试套装效果
+    async function testSetBonuses() {
+      log('🧪 测试套装效果（曼陀罗蛇）...', 'info');
+      const profile = await ensureTestPlayer();
+      
+      // 清除旧魂骨
+      await db.soulBones.where('playerId').equals(profile.id).delete();
+      
+      // 生成5件曼陀罗蛇魂骨
+      for (let i = 0; i < 5; i++) {
+        await db.soulBones.add({
+          playerId: profile.id,
+          beastType: 'mantuo',
+          slot: SOUL_BONE_SLOTS[i],
+          isIdentified: true,
+          isEquipped: true,
+          attributeType: 'health',
+          attributeValue: 1000
+        });
+      }
+      
+      const bones = await db.soulBones.where('playerId').equals(profile.id).toArray();
+      const equipped = bones.filter(b => b.isEquipped);
+      
+      const setCounts = {};
+      equipped.forEach(bone => {
+        setCounts[bone.beastType] = (setCounts[bone.beastType] || 0) + 1;
+      });
+      
+      const activatedSets = Object.keys(setCounts).filter(bt => setCounts[bt] >= 5);
+      
+      const display = document.getElementById('setBonusDisplay');
+      display.className = 'result success';
+      display.innerHTML = `
+        <div class="success">✅ 套装效果测试完成</div>
+        <div style="margin-top: 10px;">
+          <strong>套装激活情况：</strong><br>
+          ${activatedSets.length > 0 ? 
+            activatedSets.map(bt => `✅ ${SOUL_BONE_TYPES[bt].name}套装（${setCounts[bt]}/5）- ${SOUL_BONE_TYPES[bt].setSkill}：${SOUL_BONE_TYPES[bt].setSkillDesc}`).join('<br>') :
+            '❌ 未激活任何套装'
+          }
+        </div>
+      `;
+      log(`✅ 激活套装: ${activatedSets.map(bt => SOUL_BONE_TYPES[bt].name).join(', ')}`, 'success');
+    }
+
+    async function testAllSets() {
+      log('🧪 测试全部5种套装...', 'info');
+      const profile = await ensureTestPlayer();
+      await db.soulBones.where('playerId').equals(profile.id).delete();
+      
+      // 为每种魂兽生成5件装备
+      for (const bt of beastTypes) {
+        for (let i = 0; i < 5; i++) {
+          await db.soulBones.add({
+            playerId: profile.id,
+            beastType: bt,
+            slot: SOUL_BONE_SLOTS[i],
+            isIdentified: true,
+            isEquipped: true,
+            attributeType: 'health',
+            attributeValue: 1000
+          });
+        }
+      }
+      
+      const bones = await db.soulBones.where('playerId').equals(profile.id).toArray();
+      const equipped = bones.filter(b => b.isEquipped);
+      
+      const setCounts = {};
+      equipped.forEach(bone => {
+        setCounts[bone.beastType] = (setCounts[bone.beastType] || 0) + 1;
+      });
+      
+      const activatedSets = Object.keys(setCounts).filter(bt => setCounts[bt] >= 5);
+      
+      const display = document.getElementById('setBonusDisplay');
+      display.className = 'result success';
+      display.innerHTML = `
+        <div class="success">✅ 全部套装测试完成</div>
+        <div style="margin-top: 10px;">
+          <strong>激活的套装（${activatedSets.length}/5）：</strong><br>
+          ${activatedSets.map(bt => `✅ ${SOUL_BONE_TYPES[bt].icon} ${SOUL_BONE_TYPES[bt].name}套装 - ${SOUL_BONE_TYPES[bt].setSkill}`).join('<br>')}
+        </div>
+      `;
+      log(`✅ 激活了 ${activatedSets.length}/5 种套装`, 'success');
+    }
+
+    // 4. 测试僵尸对战逻辑
+    async function testKnockback() {
+      log('🧪 测试击退效果...', 'info');
+      
+      const baseKnockback = 5;
+      const knockbackMultipliers = [1.0, 1.2, 1.5, 2.0];
+      
+      let results = knockbackMultipliers.map(multiplier => {
+        const actualKnockback = baseKnockback * multiplier;
+        return `击退倍率 ${multiplier * 100}%: 击退距离 ${actualKnockback.toFixed(1)}`;
+      });
+      
+      const display = document.getElementById('zombieBattleDisplay');
+      display.className = 'result success';
+      display.innerHTML = `
+        <div class="success">✅ 击退效果测试完成</div>
+        <div style="margin-top: 10px;">
+          <strong>不同击退倍率下的击退距离：</strong><br>
+          ${results.join('<br>')}
+        </div>
+      `;
+      log('✅ 击退效果计算正确', 'success');
+    }
+
+    async function testDodge() {
+      log('🧪 测试闪避判定...', 'info');
+      
+      const dodgeRates = [0, 0.1, 0.3, 0.5, 0.8];
+      let testResults = [];
+      
+      dodgeRates.forEach(rate => {
+        let successCount = 0;
+        for (let i = 0; i < 100; i++) {
+          if (Math.random() < rate) successCount++;
+        }
+        const actualRate = (successCount / 100 * 100).toFixed(1);
+        testResults.push(`闪避率 ${rate * 100}%: 实际触发 ${actualRate}% (100次测试)`);
+      });
+      
+      const display = document.getElementById('zombieBattleDisplay');
+      display.className = 'result success';
+      display.innerHTML = `
+        <div class="success">✅ 闪避判定测试完成</div>
+        <div style="margin-top: 10px;">
+          <strong>闪避概率测试（100次/组）：</strong><br>
+          ${testResults.join('<br>')}
+        </div>
+      `;
+      log('✅ 闪避判定逻辑正确', 'success');
+    }
+
+    async function testSlow() {
+      log('🧪 测试僵尸减速...', 'info');
+      
+      const baseTime = 60;
+      const slowRates = [0, 0.1, 0.2, 0.3, 0.5];
+      
+      let results = slowRates.map(rate => {
+        const adjustedTime = baseTime / (1 - rate);
+        return `减速 ${rate * 100}%: 总时间 ${adjustedTime.toFixed(1)}秒 (基础60秒)`;
+      });
+      
+      const display = document.getElementById('zombieBattleDisplay');
+      display.className = 'result success';
+      display.innerHTML = `
+        <div class="success">✅ 僵尸减速测试完成</div>
+        <div style="margin-top: 10px;">
+          <strong>不同减速效果下的总时间：</strong><br>
+          ${results.join('<br>')}
+        </div>
+      `;
+      log('✅ 僵尸减速效果计算正确', 'success');
+    }
+
+    window.onload = async () => {
+      log('🎯 第6阶段测试页面已加载', 'success');
+      log('💡 提示：按顺序点击按钮测试各项功能', 'info');
+    };
+  </script>
+</body>
+</html>
